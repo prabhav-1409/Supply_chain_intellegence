@@ -1,0 +1,7 @@
+
+> frontend@0.0.0 preview
+> vite preview --host 0.0.0.0 --port 5175
+
+  ➜  Local:   http://localhost:5175/
+  ➜  Network: http://192.168.42.62:5175/
+  ➜  Network: http://192.168.42.61:5175/
