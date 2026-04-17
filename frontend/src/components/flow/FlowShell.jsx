@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom'
 
 const STEPS = [
-  { id: 1, label: 'Mission', icon: 'M', to: '/results/mission' },
-  { id: 2, label: 'Debate', icon: 'D', to: '/results/debate' },
-  { id: 3, label: 'Intelligence', icon: 'I', to: '/results/intelligence' },
-  { id: 4, label: 'Scenario Configuration', icon: 'S', to: '/results/scenarios' },
-  { id: 5, label: 'Operations', icon: 'O', to: '/results/operations' },
+  { id: 1, label: 'Data Ingestion + BOM Research', icon: '1', to: '/results/bom-intelligence' },
+  { id: 2, label: 'Event Trigger', icon: '2', to: '/results/disruption-impact' },
+  { id: 3, label: 'Price Simulation Engine', icon: '3', to: '/results/simulation-lab' },
+  { id: 4, label: 'Negotiation Intelligence', icon: '4', to: '/results/negotiation-intelligence' },
+  { id: 5, label: 'Recommendation Engine', icon: '5', to: '/results/recommendation-engine' },
+  { id: 6, label: 'Action + Reinforcement Learning', icon: '6', to: '/results/action-learning' },
 ]
 
 export default function FlowShell({ children }) {
@@ -13,11 +14,12 @@ export default function FlowShell({ children }) {
   const pathname = location.pathname
 
   const stepIndexByPath = {
-    '/results/mission': 1,
-    '/results/debate': 2,
-    '/results/intelligence': 3,
-    '/results/scenarios': 4,
-    '/results/operations': 5,
+    '/results/bom-intelligence': 1,
+    '/results/disruption-impact': 2,
+    '/results/simulation-lab': 3,
+    '/results/negotiation-intelligence': 4,
+    '/results/recommendation-engine': 5,
+    '/results/action-learning': 6,
   }
 
   const activeStep = stepIndexByPath[pathname] || 1
@@ -25,8 +27,8 @@ export default function FlowShell({ children }) {
   return (
     <div className="flow-shell">
       <header className="flow-topbar">
-        <h1>SENTINEL V2 FLOW</h1>
-        <p>Step-by-step dashboard journey from mission signal to action plan.</p>
+        <h1>PROCUREMENT DECISION INTELLIGENCE</h1>
+        <p>We are not just tracking disruptions. We are telling the procurement head exactly what to pay, who to pay it to, and why — so every purchase protects margin.</p>
       </header>
 
       <nav className="flow-stepper" aria-label="Workflow steps">

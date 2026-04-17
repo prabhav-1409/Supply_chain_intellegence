@@ -13,11 +13,11 @@ export default function App() {
         <Suspense fallback={<div style={{ minHeight: '100vh', color: '#dbe9ff', padding: '20px' }}>Loading V3 flow...</div>}>
           <FlowShell>
             <Routes>
-              <Route path="/" element={<Navigate to="/results/mission" replace />} />
-              <Route path="/swarm" element={<Navigate to="/results/mission" replace />} />
-              <Route path="/results" element={<Navigate to="/results/mission" replace />} />
+              <Route path="/" element={<Navigate to="/results/bom-intelligence" replace />} />
+              <Route path="/swarm" element={<Navigate to="/results/bom-intelligence" replace />} />
+              <Route path="/results" element={<Navigate to="/results/bom-intelligence" replace />} />
               <Route path="/results/:section" element={<ResultsDashboardPage />} />
-              <Route path="*" element={<Navigate to="/results/mission" replace />} />
+              <Route path="*" element={<Navigate to="/results/bom-intelligence" replace />} />
             </Routes>
           </FlowShell>
         </Suspense>

@@ -6,19 +6,20 @@ import { useFlow } from '../context/FlowContext'
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8003'
 
 const RESULTS_TABS = [
-  { id: 'mission', label: 'Mission' },
-  { id: 'debate', label: 'Debate' },
-  { id: 'intelligence', label: 'Intelligence' },
-  { id: 'scenarios', label: 'Scenario Configuration' },
-  { id: 'operations', label: 'Operations' },
+  { id: 'bom-intelligence', label: '1. BOM + Global Intelligence' },
+  { id: 'disruption-impact', label: '2. Event Trigger + Cost Impact' },
+  { id: 'simulation-lab', label: '3. Price Simulation Engine' },
+  { id: 'negotiation-intelligence', label: '4. Negotiation Intelligence' },
+  { id: 'recommendation-engine', label: '5. Recommendation Engine' },
+  { id: 'action-learning', label: '6. Action + Reinforcement Learning' },
 ]
 
 export default function ResultsDashboardPage() {
   const navigate = useNavigate()
   const { section } = useParams()
-  const { runInfo, setRunInfo } = useFlow()
+  const { runInfo, setRunInfo, orderContext, setOrderContext, initialOrderContext } = useFlow()
   const isKnownSection = useMemo(() => RESULTS_TABS.some((tab) => tab.id === section), [section])
-  const [localSection, setLocalSection] = useState(isKnownSection ? section : 'mission')
+  const [localSection, setLocalSection] = useState(isKnownSection ? section : 'bom-intelligence')
   const autoAdvanceLockRef = useRef('')
   const activeSection = localSection
   const activeIndex = useMemo(() => RESULTS_TABS.findIndex((tab) => tab.id === activeSection), [activeSection])
@@ -37,8 +38,8 @@ export default function ResultsDashboardPage() {
 
   useEffect(() => {
     if (section && !isKnownSection) {
-      setLocalSection('mission')
-      navigate('/results/mission', { replace: true })
+      setLocalSection('bom-intelligence')
+      navigate('/results/bom-intelligence', { replace: true })
       return
     }
     if (isKnownSection && section) {
@@ -51,7 +52,7 @@ export default function ResultsDashboardPage() {
   }, [activeSection])
 
   useEffect(() => {
-    if (activeSection !== 'mission' || !runInfo.runId) return
+    if (activeSection !== 'disruption-impact' || !runInfo.runId) return
     let cancelled = false
     const lockKey = runInfo.runId
 
@@ -65,7 +66,7 @@ export default function ResultsDashboardPage() {
         const completed = status?.status === 'completed' || status?.stage === 'artifacts' || progress >= 100
         if (completed && autoAdvanceLockRef.current !== lockKey) {
           autoAdvanceLockRef.current = lockKey
-          goToSection('debate')
+          goToSection('simulation-lab')
         }
       } catch {}
     }
@@ -84,8 +85,14 @@ export default function ResultsDashboardPage() {
 
   const startNewFlow = () => {
     setRunInfo({ eventId: '', componentId: '', runId: '' })
-    goToSection('mission', { replace: true })
+    setOrderContext(initialOrderContext)
+    goToSection('bom-intelligence', { replace: true })
   }
+
+  const handleOrderContextChange = useCallback((nextContext) => {
+    if (!nextContext) return
+    setOrderContext((prev) => ({ ...prev, ...nextContext }))
+  }, [setOrderContext])
 
   const handleRunIdChange = useCallback((nextRunId) => {
     if (!nextRunId) return
@@ -96,8 +103,8 @@ export default function ResultsDashboardPage() {
     <div className="flow-page results-page">
       <div className="results-toolbar">
         <div>
-          <h3>{RESULTS_TABS[activeIndex]?.label || 'Mission'} · Step {activeIndex + 1} / {RESULTS_TABS.length}</h3>
-          <p>Run ID: {runInfo.runId || 'not deployed yet'} · Guided view of mission, debate, intelligence, scenario configuration, and operations.</p>
+          <h3>{RESULTS_TABS[activeIndex]?.label || '1. BOM + Global Intelligence'} · Step {activeIndex + 1} / {RESULTS_TABS.length}</h3>
+          <p>Run ID: {runInfo.runId || 'not deployed yet'} · Revenue − Purchase Cost − Logistics Cost = Profit.</p>
         </div>
         <div className="results-toolbar-actions">
           {RESULTS_TABS.map((tab) => (
@@ -150,7 +157,9 @@ export default function ResultsDashboardPage() {
         initialEventId={runInfo.eventId}
         initialComponentId={runInfo.componentId}
         initialRunId={runInfo.runId}
+        initialOrderContext={orderContext}
         onRunIdChange={handleRunIdChange}
+        onOrderContextChange={handleOrderContextChange}
         onRequestSectionChange={goToSection}
       />
     </div>

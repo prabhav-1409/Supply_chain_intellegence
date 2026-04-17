@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 const TAG_CONFIG = {
   signal:   { color: '#00d4ff', icon: '◈', label: 'Signal',   confidence: 82 },
@@ -18,6 +18,25 @@ const AGENT_COLORS = {
   RecEngine:    '#39d353',
   VendorIntel:  '#50fa7b',
   JudgeAgent:   '#ffd700',
+}
+
+const AGENT_ORBIT_LAYOUT = {
+  AutoResearch: { x: 50, y: 10 },
+  CausalGraph:  { x: 84, y: 30 },
+  TimesFM:      { x: 84, y: 70 },
+  RiskScorer:   { x: 50, y: 90 },
+  RecEngine:    { x: 16, y: 70 },
+  JudgeAgent:   { x: 16, y: 30 },
+}
+
+// Maps agent tag → semantic step label shown on handoff edge
+const TAG_EDGE_LABELS = {
+  signal:   'Signal',
+  causal:   'Cause',
+  forecast: 'Forecast',
+  risk:     'Risk',
+  decision: 'Decision',
+  verdict:  'Verdict',
 }
 
 function DebateCard({ entry, index, isActive, isDimmed, isHighlighted, graphNodeLabels, onClick }) {
@@ -85,6 +104,151 @@ function DebateCard({ entry, index, isActive, isDimmed, isHighlighted, graphNode
   )
 }
 
+export function SwarmInteractionBoard({ logs, replayActiveLog, highlightedAgents, onAgentFilter, compact }) {
+  const activeAgents = highlightedAgents.length > 0 ? highlightedAgents : null
+  const recentRelay = useMemo(() => logs.slice(-6), [logs])
+  const transitions = useMemo(() => {
+    const items = []
+    for (let index = 1; index < recentRelay.length; index += 1) {
+      const from = recentRelay[index - 1]
+      const to = recentRelay[index]
+      if (!from || !to || from.agent === to.agent) continue
+      items.push({
+        id: `${from.sequence}-${to.sequence}`,
+        from: from.agent,
+        to: to.agent,
+        tag: to.tag,
+        message: to.message,
+        edgeLabel: TAG_EDGE_LABELS[to.tag] || 'Relay',
+      })
+    }
+    return items
+  }, [recentRelay])
+
+  const nodes = useMemo(() => {
+    const orderedNames = ['AutoResearch', 'CausalGraph', 'TimesFM', 'RiskScorer', 'RecEngine', 'JudgeAgent']
+    return orderedNames.map((name) => {
+      const latest = [...logs].reverse().find((entry) => entry.agent === name)
+      return {
+        name,
+        latest,
+        position: AGENT_ORBIT_LAYOUT[name] || { x: 50, y: 50 },
+        active: replayActiveLog?.agent === name,
+        muted: activeAgents ? !activeAgents.includes(name) : false,
+      }
+    })
+  }, [activeAgents, logs, replayActiveLog])
+
+  return (
+    <div className={`swarm-interaction-grid${compact ? ' compact' : ''}`}>
+      <div className="swarm-board">
+        <div className="swarm-core-ring" />
+        <div className="swarm-core-pulse" />
+        <div className="swarm-core-label">
+          <span>Swarm Core</span>
+          <strong>{replayActiveLog?.agent || 'Awaiting debate'}</strong>
+        </div>
+
+        <svg className="swarm-links" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            {transitions.map((transition) => {
+              const color = AGENT_COLORS[transition.to] || '#00d4ff'
+              return (
+                <marker key={`mk-${transition.id}`} id={`arrow-${transition.id}`} markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto">
+                  <path d="M0,0 L0,4 L4,2 z" fill={color} />
+                </marker>
+              )
+            })}
+          </defs>
+          {transitions.map((transition, index) => {
+            const from = AGENT_ORBIT_LAYOUT[transition.from]
+            const to = AGENT_ORBIT_LAYOUT[transition.to]
+            const color = AGENT_COLORS[transition.to] || '#00d4ff'
+            if (!from || !to) return null
+            const mx = (from.x + to.x) / 2
+            const my = (from.y + to.y) / 2
+            return (
+              <g key={transition.id}>
+                <motion.line
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke={color}
+                  strokeWidth="0.8"
+                  strokeDasharray="2 2"
+                  markerEnd={`url(#arrow-${transition.id})`}
+                  initial={{ opacity: 0.2 }}
+                  animate={{ opacity: 0.9 }}
+                  transition={{ duration: 0.5, delay: index * 0.08 }}
+                />
+                <motion.text
+                  x={mx}
+                  y={my - 1.5}
+                  textAnchor="middle"
+                  className="swarm-edge-label"
+                  fill={color}
+                  fontSize="3.5"
+                  fontFamily="monospace"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.85 }}
+                  transition={{ duration: 0.4, delay: index * 0.08 + 0.2 }}
+                >
+                  {transition.edgeLabel}
+                </motion.text>
+              </g>
+            )
+          })}
+        </svg>
+
+        {nodes.map((node, index) => {
+          const color = AGENT_COLORS[node.name] || '#00d4ff'
+          return (
+            <motion.button
+              key={node.name}
+              className={`swarm-agent-node ${node.active ? 'active' : ''} ${node.muted ? 'muted' : ''}`}
+              style={{ left: `${node.position.x}%`, top: `${node.position.y}%`, '--swarm-color': color }}
+              onClick={() => onAgentFilter({ name: node.name, sequence: node.latest?.sequence, edgeId: node.latest?.edge_id })}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: node.muted ? 0.35 : 1, scale: node.active ? 1.06 : 1 }}
+              transition={{ duration: 0.25, delay: index * 0.04 }}
+            >
+              <div className="swarm-agent-dot" />
+              <strong>{node.name}</strong>
+              <span>{node.latest?.tag || 'standby'}</span>
+            </motion.button>
+          )
+        })}
+      </div>
+
+      {!compact && (
+        <div className="swarm-relay-panel">
+          <div className="swarm-relay-head">
+            <h3>Live Agent Relay</h3>
+            <span>{transitions.length} handoffs</span>
+          </div>
+          <div className="swarm-relay-list">
+            {transitions.length === 0 && <p className="empty-state">Interactions appear as agents hand work to each other.</p>}
+            {transitions.map((transition) => (
+              <motion.div key={transition.id} className="swarm-relay-item" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}>
+                <div className="swarm-relay-route">
+                  <span style={{ color: AGENT_COLORS[transition.from] || '#00d4ff' }}>{transition.from}</span>
+                  <strong>→</strong>
+                  <span style={{ color: AGENT_COLORS[transition.to] || '#00d4ff' }}>{transition.to}</span>
+                  <span className="swarm-relay-tag-pill" style={{ borderColor: AGENT_COLORS[transition.to] || '#00d4ff', color: AGENT_COLORS[transition.to] || '#00d4ff' }}>
+                    {transition.edgeLabel}
+                  </span>
+                </div>
+                <p>{transition.message}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AIDebateStage({
   logs,
   displayedLogs,
@@ -101,7 +265,23 @@ export default function AIDebateStage({
   onReplayReset,
   agentTelemetry,
   judgeVerdict,
+  onAutoPlay,
 }) {
+  // Autoplay: fire onAutoPlay once when logs cross 2 entries and replay is idle
+  const autoPlayFired = useRef(false)
+  useEffect(() => {
+    if (!autoPlayFired.current && logs.length >= 2 && replayCursor === null && !isReplayPlaying && onAutoPlay) {
+      autoPlayFired.current = true
+      // Small delay so the board renders first
+      const timer = setTimeout(() => onAutoPlay(), 800)
+      return () => clearTimeout(timer)
+    }
+  }, [isReplayPlaying, logs.length, onAutoPlay, replayCursor])
+
+  // Reset autoPlayFired when logs are cleared (new run)
+  useEffect(() => {
+    if (logs.length === 0) autoPlayFired.current = false
+  }, [logs.length])
   const replayIndex = replayCursor ?? Math.max(logs.length - 1, 0)
 
   const visibleLogs = useMemo(() =>
@@ -122,8 +302,9 @@ export default function AIDebateStage({
           <p>{logs.length > 0 ? `${logs.length} analyses · live debate` : 'Deploy swarm to start debate'}</p>
         </div>
         {logs.length > 1 && (
-          <div className="debate-stage-controls">
-            <button
+          <div className="debate-stage-controls">            {isReplayPlaying && replayCursor !== null && (
+              <span className="swarm-autoplay-badge">⚡ Auto-replaying</span>
+            )}            <button
               className={`stage-btn ${isReplayPlaying ? 'active' : ''}`}
               onClick={onReplayToggle}
               disabled={logs.length < 2}
@@ -167,6 +348,13 @@ export default function AIDebateStage({
           )
         })}
       </div>
+
+      <SwarmInteractionBoard
+        logs={visibleLogs}
+        replayActiveLog={replayActiveLog}
+        highlightedAgents={highlightedAgents}
+        onAgentFilter={onAgentFilter}
+      />
 
       {/* Timeline scrubber */}
       {logs.length > 1 && (

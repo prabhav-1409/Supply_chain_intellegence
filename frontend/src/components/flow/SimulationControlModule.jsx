@@ -67,33 +67,7 @@ export const DEFAULT_SIMULATION_CONFIG = {
   },
 }
 
-export default function SimulationControlModule({ config, setConfig, onPresetApplied, primaryComponentId, primaryComponentName }) {
-const PRESETS = {
-  baseline: {
-    selectedSkus: ['gpu-module', 'helium-memory-chip'],
-    activeRoutes: ['Shanghai->Rotterdam', 'Shanghai->Long Beach', 'Busan->Hamburg'],
-    blockedRoutes: [],
-    disruptionIntensity: 20,
-    disruptionDuration: 15,
-    tariffs: { china: 35, other: 10, domestic: 0 },
-  },
-  severe: {
-    selectedSkus: ['gpu-module', 'helium-memory-chip', 'tungsten-precision-component'],
-    activeRoutes: ['Shanghai->Rotterdam', 'Shanghai->Long Beach'],
-    blockedRoutes: ['Shanghai->Rotterdam'],
-    disruptionIntensity: 75,
-    disruptionDuration: 45,
-    tariffs: { china: 145, other: 25, domestic: 0 },
-  },
-  reroute: {
-    selectedSkus: ['poweredge-cpu', 'gpu-module', 'aluminum-chassis'],
-    activeRoutes: ['Shanghai->Singapore', 'Busan->Hamburg', 'Yantian->Los Angeles'],
-    blockedRoutes: ['Shanghai->Singapore'],
-    disruptionIntensity: 55,
-    disruptionDuration: 30,
-    tariffs: { china: 85, other: 18, domestic: 5 },
-  },
-}
+export default function SimulationControlModule({ config, setConfig, primaryComponentId, primaryComponentName }) {
 
   const [localConfig, setLocalConfig] = useState(DEFAULT_SIMULATION_CONFIG)
   const activeConfig = config || localConfig
@@ -150,20 +124,6 @@ const PRESETS = {
     })
   }
 
-  const applyPreset = (presetId) => {
-    const preset = PRESETS[presetId]
-    if (!preset) return
-    updateConfig((prev) => ({
-      ...prev,
-      ...preset,
-      selectedSkus: [
-        scopeProfile.anchorId,
-        ...preset.selectedSkus.filter((skuId, index, arr) => skuId !== scopeProfile.anchorId && allowedScopeIds.has(skuId) && arr.indexOf(skuId) === index),
-      ],
-    }))
-    onPresetApplied?.(presetId)
-  }
-
   const handleUpload = (event) => {
     const files = Array.from(event.target.files || [])
     if (!files.length) return
@@ -173,29 +133,10 @@ const PRESETS = {
     }))
   }
 
-  const resetToDefault = () => {
-    updateConfig((prev) => ({
-      ...DEFAULT_SIMULATION_CONFIG,
-      uploadedDocs: prev.uploadedDocs,
-      selectedSkus: [...scopeProfile.defaultSelected],
-    }))
-  }
-
   const blockedRatio = `${blockedCount}/${Math.max(activeConfig.activeRoutes.length, 1)}`
 
   return (
     <section className="sim-module">
-      <div className="sim-card">
-        <h3>Assumption Templates</h3>
-        <p>These buttons prefill the controls below and align the scenario card, priority, and horizon for faster what-if setup.</p>
-        <div className="sim-preset-row">
-          <button className="flow-btn" onClick={() => applyPreset('baseline')}>Baseline</button>
-          <button className="flow-btn" onClick={() => applyPreset('severe')}>Severe Disruption</button>
-          <button className="flow-btn" onClick={() => applyPreset('reroute')}>Reroute Bias</button>
-          <button className="flow-btn" onClick={resetToDefault}>Reset Workspace</button>
-        </div>
-      </div>
-
       <div className="sim-card">
         <h3>Upload Relevant Documents</h3>
         <p>Upload PDF, DOCX, or TXT files with news, media, or supply chain reports.</p>
