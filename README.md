@@ -68,6 +68,10 @@ Backend health endpoint: http://localhost:8003/api/v2/health
 cd /home/prabhav/supply-chain-intel/supply-chain-command-center-v3
 OLLAMA_BASE_URL=http://localhost:11434 OLLAMA_MODEL=qwen2.5:7b ./run-v3.sh
 
+#Use this whenever the app seems stuck:
+
+cd /home/prabhav/supply-chain-intel/supply-chain-command-center-v3
+./doctor.sh
 ## Current Integration Strategy
 
 - Input Configuration only captures the live event and affected component.

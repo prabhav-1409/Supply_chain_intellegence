@@ -10,6 +10,7 @@ import BoardroomMode from './components/BoardroomMode'
 import NarrativeCopilot from './components/NarrativeCopilot'
 import SimulationPanel from './components/SimulationPanel'
 import SimulationControlModule, { DEFAULT_SIMULATION_CONFIG } from './components/flow/SimulationControlModule'
+import SwarmDeployCanvas from './components/SwarmDeployCanvas'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8003'
 
@@ -228,6 +229,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const [simulationFreightMode, setSimulationFreightMode] = useState('auto')
   const [simulationMonteCarloRuns, setSimulationMonteCarloRuns] = useState(1200)
   const [selectedSimulationScenarioId, setSelectedSimulationScenarioId] = useState('')
+  const [materialAmplifications, setMaterialAmplifications] = useState({})
 
   // ── Module 4: Negotiation Intelligence ───────────────────────────────────
   const [negotiationBriefData, setNegotiationBriefData] = useState(null)
@@ -2136,86 +2138,25 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             )}
           </div>
 
-          {!isImpactTriggered || !disruptionImpactData ? (
+          {!isImpactTriggered ? (
             <div className="section-placeholder">
               <h3>Trigger Disruption First</h3>
-              <p>Select event and component, then trigger impact to compute tariff, freight, lead-time, and landed-cost deltas.</p>
+              <p>Select event and component, then click Trigger Event + Deploy AI Swarm to launch the knowledge graph and agent analysis.</p>
             </div>
           ) : (
-            <>
-              <div className="metrics-strip">
-                <div><span>Total Cost Stack Before</span><strong>${Number(disruptionImpactData.overall_cost_stack?.before_total_usd || 0).toLocaleString()}</strong></div>
-                <div><span>Total Cost Stack After</span><strong>${Number(disruptionImpactData.overall_cost_stack?.after_total_usd || 0).toLocaleString()}</strong></div>
-                <div><span>Total Dollar Impact</span><strong>${Number(disruptionImpactData.overall_cost_stack?.delta_total_usd || 0).toLocaleString()}</strong></div>
-                <div><span>Total Impact (%)</span><strong>{Number(disruptionImpactData.overall_cost_stack?.delta_total_pct || 0).toFixed(2)}%</strong></div>
-              </div>
-              <p className="ops-context-note">{disruptionImpactData.summary}</p>
-              <div className="bom-category-row" style={{ marginTop: 8 }}>
-                {affectedComponents.map((item) => (
-                  <button
-                    key={item.component_id}
-                    className={`ghost-btn ${activeImpactComponent?.component_id === item.component_id ? 'active' : ''}`}
-                    onClick={() => setSelectedImpactComponentId(item.component_id)}
-                  >
-                    {item.component_name}
-                  </button>
-                ))}
-              </div>
-              <div className="scenario-compare-wrap" style={{ marginTop: 10 }}>
-                <table className="scenario-compare-table">
-                  <thead>
-                    <tr>
-                      <th>Affected BOM Component</th>
-                      <th>Price Impact %</th>
-                      <th>New Effective Unit Cost</th>
-                      <th>Unit Delta</th>
-                      <th>Total Delta (USD)</th>
-                      <th>Confidence Interval (Unit USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {affectedComponents.map((item) => (
-                      <tr key={`affected-${item.component_id}`} onClick={() => setSelectedImpactComponentId(item.component_id)}>
-                        <td>{item.component_name}</td>
-                        <td>{Number(item.price_impact_pct || 0).toFixed(2)}%</td>
-                        <td>${Number(item.new_effective_unit_cost || 0).toLocaleString()}</td>
-                        <td>${Number(item.unit_cost_delta_usd || 0).toLocaleString()}</td>
-                        <td>${Number(item.total_cost_delta_usd || 0).toLocaleString()}</td>
-                        <td>${Number(item.confidence_interval_unit_usd?.[0] || 0).toLocaleString()} to ${Number(item.confidence_interval_unit_usd?.[1] || 0).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="agent-chart-grid">
-                <div className="intel-card">
-                  <h3>Selected Component Cost Stack</h3>
-                  <div className="decision-grid">
-                    <div><span>Base Unit Cost</span><strong>${Number(activeImpactComponent?.base_unit_cost || 0).toLocaleString()}</strong></div>
-                    <div><span>New Effective Unit Cost</span><strong>${Number(activeImpactComponent?.new_effective_unit_cost || 0).toLocaleString()}</strong></div>
-                    <div><span>Driver: Tariff</span><strong>{Number(activeImpactComponent?.driver_breakdown?.tariff_pct || 0).toFixed(2)}%</strong></div>
-                    <div><span>Driver: Freight</span><strong>{Number(activeImpactComponent?.driver_breakdown?.freight_pct || 0).toFixed(2)}%</strong></div>
-                    <div><span>Driver: Commodity</span><strong>{Number(activeImpactComponent?.driver_breakdown?.commodity_pct || 0).toFixed(2)}%</strong></div>
-                    <div><span>Confidence (Unit USD)</span><strong>${Number(activeImpactComponent?.confidence_interval_unit_usd?.[0] || 0).toLocaleString()} to ${Number(activeImpactComponent?.confidence_interval_unit_usd?.[1] || 0).toLocaleString()}</strong></div>
-                  </div>
-                </div>
-                <div className="intel-card">
-                  <h3>By Geography: Impact and New Cost</h3>
-                  <ul>
-                    {activeImpactGeography.map((row) => (
-                      <li key={`${activeImpactComponent?.component_id}-${row.region}`}>
-                        {row.region} · impact {Number(row.price_impact_pct || 0).toFixed(2)}% · new unit ${Number(row.new_effective_unit_cost || 0).toLocaleString()} · CI ${Number(row.confidence_interval_usd?.[0] || 0).toLocaleString()} to ${Number(row.confidence_interval_usd?.[1] || 0).toLocaleString()}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              <div className="flow-page-actions" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
-                <button className="flow-btn primary" onClick={() => navigateToSection('component-analysis')}>
-                  Continue to Simulation Lab
-                </button>
-              </div>
-            </>
+            <SwarmDeployCanvas
+              eventId={selectedEventId}
+              event={selectedEvent}
+              orderContext={orderContext}
+              disruptionImpactData={disruptionImpactData}
+              isDeployed={Boolean(runId)}
+              isDeploying={isDeploying}
+              runStatus={runStatus}
+              debateLogs={debateLogs}
+              causalChain={causalSteps}
+              onMaterialAmplificationsChange={setMaterialAmplifications}
+              navigateToSection={navigateToSection}
+            />
           )}
         </motion.section>
       )}

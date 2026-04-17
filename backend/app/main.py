@@ -4218,6 +4218,117 @@ def interaction_graph(event_id: Optional[str] = None, limit: int = 200) -> dict:
         return fallback
 
 
+@app.get("/api/v2/swarm/knowledge-graph")
+def swarm_knowledge_graph(event_id: str = "hormuz-closure", order_id: Optional[str] = None) -> dict:
+    """
+    Returns supply-chain topology nodes and edges for the Module 2 Swarm Deploy Canvas.
+    All vendors, routes, ports, carriers, and risk zones are derived from VENDOR_CATALOG,
+    ROUTE_CATALOG, and CORRIDOR_GRAPH for the given event.
+    """
+    # Events that block specific corridors
+    event_corridor_blocks: dict[str, list[str]] = {
+        "hormuz-closure":     ["strait-of-hormuz", "red-sea", "suez"],
+        "malaysia-floods":    ["malacca-strait"],
+        "us-china-tariff":    ["south-china-sea"],
+        "us-china-trade-war": ["south-china-sea"],
+        "taiwan-earthquake":  ["south-china-sea"],
+        "tsmc-factory-fire":  [],
+    }
+    blocked_corridors = set(event_corridor_blocks.get(event_id, []))
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    seen_vendors: set[str] = set()
+    seen_ports: set[str] = set()
+
+    # Central demand node
+    nodes.append({"id": "demand-hq", "nodeType": "demand", "label": "Dell HQ\nDemand", "revealOrder": 0})
+
+    # BOM component nodes
+    for idx, (component_id, vendors) in enumerate(VENDOR_CATALOG.items()):
+        comp_name = component_id.replace("-", " ").title()
+        nodes.append({"id": component_id, "nodeType": "component", "label": comp_name, "revealOrder": 1 + idx})
+        edges.append({"id": f"e-{component_id}-demand", "source": component_id, "target": "demand-hq", "edgeType": "active"})
+
+        # Vendor nodes per component
+        v_order = 1 + len(VENDOR_CATALOG) + len(seen_vendors)
+        for vendor in vendors[:3]:
+            vid = vendor["vendor_id"]
+            tier_map = {"domestic": "domestic", "nearshore": "nearshore", "friend-shore": "friendshore"}
+            node_type = tier_map.get(vendor["tier"], "friendshore")
+            if vid not in seen_vendors:
+                seen_vendors.add(vid)
+                nodes.append({
+                    "id": vid, "nodeType": node_type,
+                    "label": vendor["name"].replace(" ", "\n"),
+                    "country": vendor["country"], "revealOrder": v_order,
+                })
+                v_order += 1
+            is_blocked = (
+                vendor["country"] == "CN" and "south-china-sea" in blocked_corridors
+                or vendor["country"] == "AE" and "strait-of-hormuz" in blocked_corridors
+                or vendor["country"] == "MY" and "malacca-strait" in blocked_corridors
+            )
+            edges.append({"id": f"e-{vid}-{component_id}", "source": vid, "target": component_id, "edgeType": "blocked" if is_blocked else "active"})
+
+    # Port / hub nodes from routes
+    p_order = 1 + len(VENDOR_CATALOG) + len(seen_vendors)
+    for route in ROUTE_CATALOG:
+        if not route["nodes"]:
+            continue
+        first_hub = route["nodes"][0]
+        hub_id = f"hub-{first_hub.lower().replace(' ', '-')}"
+        if hub_id not in seen_ports:
+            seen_ports.add(hub_id)
+            nodes.append({"id": hub_id, "nodeType": "port", "label": first_hub.replace(" ", "\n"), "revealOrder": p_order})
+            p_order += 1
+        route_blocked = any(c in blocked_corridors for c in route.get("corridors", []))
+        edge_type = "blocked" if route_blocked else "research"
+        edge_id = f"e-{route['vendor_id']}-{hub_id}"
+        if not any(e["id"] == edge_id for e in edges):
+            edges.append({"id": edge_id, "source": route["vendor_id"], "target": hub_id, "edgeType": edge_type})
+
+    # Carrier nodes (one per unique mode)
+    seen_modes: set[str] = set()
+    for route in ROUTE_CATALOG:
+        mode = route["mode"]
+        if mode not in seen_modes:
+            seen_modes.add(mode)
+            nodes.append({"id": f"carrier-{mode}", "nodeType": "carrier", "label": f"{mode.title()}\nFreight", "revealOrder": p_order})
+            p_order += 1
+            # carrier → first port of matching mode
+            for r2 in ROUTE_CATALOG:
+                if r2["mode"] == mode and r2["nodes"]:
+                    hub_id = f"hub-{r2['nodes'][0].lower().replace(' ', '-')}"
+                    if any(n["id"] == hub_id for n in nodes):
+                        edges.append({"id": f"e-carrier-{mode}-{hub_id}", "source": f"carrier-{mode}", "target": hub_id, "edgeType": "active"})
+                        break
+
+    # Risk zone nodes — event-specific
+    risk_labels: dict[str, list[str]] = {
+        "hormuz-closure":     ["Strait of\nHormuz", "Red Sea\nRisk", "Insurance\nSpike"],
+        "us-china-tariff":    ["Tariff\nZone", "CN Export\nRisk", "Margin\nPressure"],
+        "taiwan-earthquake":  ["Seismic\nZone", "Fab\nOutage", "Wafer\nShortage"],
+        "us-china-trade-war": ["Export\nControls", "Policy\nRisk", "Route\nBlock"],
+        "malaysia-floods":    ["Flood\nZone", "Port\nClosure", "Labor\nRisk"],
+        "tsmc-factory-fire":  ["Factory\nFire", "Fab\nOutage", "Wafer\nShortage"],
+    }
+    for i, label in enumerate((risk_labels.get(event_id) or ["Risk Zone 1", "Risk Zone 2", "Risk Zone 3"])[:3]):
+        nodes.append({"id": f"risk-{i}", "nodeType": "risk", "label": label, "revealOrder": p_order + i})
+
+    return {
+        "event_id": event_id,
+        "nodes": nodes,
+        "edges": edges,
+        "blocked_corridors": list(blocked_corridors),
+        "stats": {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "blocked_edges": sum(1 for e in edges if e["edgeType"] == "blocked"),
+        },
+    }
+
+
 @app.get("/api/v2/agents/providers")
 def agents_provider_registry() -> dict:
     return {
