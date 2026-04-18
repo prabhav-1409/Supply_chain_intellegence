@@ -134,7 +134,9 @@ function ActContent({ actId, event, causalSteps, debateLogs, scenario, recommend
             <p className="empty-state">Run scenario simulation to see outcome projections.</p>
           )}
           <div className="boardroom-sign-off">
-            SENTINEL V2 · AI-Driven Supply Chain Decision Intelligence
+            <span className="boardroom-sign-off-label">Platform</span>
+            <strong className="boardroom-sign-off-value">SENTINEL V2</strong>
+            <span className="boardroom-sign-off-meta">AI-Driven Supply Chain Decision Intelligence</span>
           </div>
         </div>
       )
@@ -257,7 +259,24 @@ export default function BoardroomMode({ isActive, event, causalSteps, debateLogs
         >
           ← Prev
         </button>
-        <span>{currentAct + 1} / {ACTS.length}</span>
+        <div className="boardroom-statusbar" role="status" aria-live="polite">
+          <div className="boardroom-status-meta">
+            <span className="boardroom-status-label">Mode</span>
+            <strong className="boardroom-status-value">{isAutoplay ? 'Auto' : 'Manual'}</strong>
+          </div>
+          <div className="boardroom-status-meta">
+            <span className="boardroom-status-label">Act</span>
+            <strong className="boardroom-status-value">{currentAct + 1}/{ACTS.length}</strong>
+          </div>
+          <div className="boardroom-signal-dots" aria-hidden="true">
+            {ACTS.map((item, idx) => (
+              <span
+                key={`status-${item.id}`}
+                className={`boardroom-signal-dot ${idx === currentAct ? 'active' : ''} ${idx < currentAct ? 'done' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
         <button
           className="boardroom-nav-btn"
           onClick={() => setCurrentAct((v) => Math.min(ACTS.length - 1, v + 1))}

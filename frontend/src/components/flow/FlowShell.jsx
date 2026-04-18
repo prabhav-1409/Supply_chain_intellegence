@@ -35,7 +35,6 @@ export default function FlowShell({ children }) {
         {STEPS.map((step, idx) => (
           <div key={step.id} className="flow-step-wrap">
             <Link className={`flow-step ${activeStep >= step.id ? 'active' : ''}`} to={step.to}>
-              <span className="flow-step-badge">{step.id}</span>
               <span className="flow-step-icon">{step.icon}</span>
               <span>{step.label}</span>
             </Link>

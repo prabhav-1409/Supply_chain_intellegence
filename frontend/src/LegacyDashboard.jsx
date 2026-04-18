@@ -1268,6 +1268,22 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }, [metricsSummary])
   const insightFor = useCallback((cardId) => liveAgentCards[cardId], [liveAgentCards])
   const topMarketEvidence = decisionContextData?.market_price_evidence?.[activeDecisionComponentId] || []
+  const evidenceToneFromLabel = useCallback((label = '') => {
+    const lower = String(label).toLowerCase()
+    if (lower.includes('risk') || lower.includes('disrupt') || lower.includes('shortage')) return 'risk'
+    if (lower.includes('watch') || lower.includes('monitor')) return 'watch'
+    if (lower.includes('price') || lower.includes('cost') || lower.includes('tariff') || lower.includes('inflation')) return 'warning'
+    return 'watch'
+  }, [])
+  const marketTrendToneFromLabel = useCallback((label = '') => {
+    const lower = String(label).toLowerCase()
+    if (lower.includes('cn-origin tariff exposure')) return 'risk'
+    if (lower.includes('memory allocation tightening')) return 'watch'
+    if (lower.includes('dram spot weekly move') || lower.includes('expected freight delay')) return 'warning'
+    if (lower.includes('tariff') || lower.includes('risk')) return 'risk'
+    if (lower.includes('watch')) return 'watch'
+    return 'warning'
+  }, [])
   const researchComponents = decisionContextData?.component_requirement_set || []
   const activeResearchComponentId = selectedResearchComponentId || researchComponents[0]?.component_id || ''
   const activeResearchComponent = researchComponents.find((component) => component.component_id === activeResearchComponentId) || null
@@ -1678,7 +1694,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }
 
   return (
-    <div ref={shellRef} className="shell">
+    <div ref={shellRef} className={`shell ${view === 'bom-intelligence' ? 'bom-intelligence-typography' : ''}`}>
       <AmbientBackground />
 
       <BoardroomMode
@@ -1829,20 +1845,30 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               <div className="agent-chart-grid">
                 <div className="intel-card">
                   <h3>Top Exposed Components</h3>
-                  <ul>
+                  <ul className="inline-metric-list">
                     {(decisionContextData.top_exposed_components || []).map((item) => (
-                      <li key={item.component_id}>
-                        <strong>{item.component_name}</strong> · ${Number(item.disruption_sensitive_spend || 0).toLocaleString()} sensitive spend · {item.margin_sensitivity_pct}% margin sensitivity
+                      <li key={item.component_id} className="inline-metric-row">
+                        <span className="inline-metric-dot dot-spend" aria-hidden="true" />
+                        <strong className="inline-metric-key">{item.component_name}</strong>
+                        <span className="inline-metric-sep" aria-hidden="true">|</span>
+                        <span className="inline-metric-value">
+                          Sensitive spend <span className="value-amber">${Number(item.disruption_sensitive_spend || 0).toLocaleString()}</span> · {item.margin_sensitivity_pct}% margin
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </div>
                 <div className="intel-card">
                   <h3>Market Evidence</h3>
-                  <ul>
+                  <ul className="inline-metric-list">
                     {topMarketEvidence.map((item, index) => (
-                      <li key={`${item.label}-${index}`}>
-                        <strong>{item.label}</strong> · {item.value}{item.unit ? ` ${item.unit}` : ''} · confidence {item.confidence}% · fresh {item.freshness_hours}h
+                      <li key={`${item.label}-${index}`} className="inline-metric-row">
+                        <span className={`inline-metric-dot dot-${evidenceToneFromLabel(item.label)}`} aria-hidden="true" />
+                        <strong className="inline-metric-key">{item.label}</strong>
+                        <span className="inline-metric-sep" aria-hidden="true">|</span>
+                        <span className="inline-metric-value">
+                          {item.value}{item.unit ? ` ${item.unit}` : ''} · conf {item.confidence}% · fresh <span className="value-teal">{item.freshness_hours}h</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -1924,12 +1950,24 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       </tbody>
                     </table>
                   </div>
-                  <div className="intel-card" style={{ marginTop: 10 }}>
+                  <div className="intel-card market-trend-evidence-panel" style={{ marginTop: 10 }}>
                     <h3>Market Trend Evidence</h3>
-                    <ul>
+                    <ul className="market-trend-evidence-list">
                       {activeResearchEvidence.map((item, index) => (
-                        <li key={`${activeResearchComponentId}-evidence-${index}`}>
-                          <strong>{item.label}</strong> · {item.value}{item.unit ? ` ${item.unit}` : ''} · confidence {item.confidence}%
+                        <li key={`${activeResearchComponentId}-evidence-${index}`} className={`market-trend-evidence-row tone-${marketTrendToneFromLabel(item.label)}`}>
+                          <span className="market-trend-evidence-dot" aria-hidden="true" />
+                          <span className="market-trend-evidence-sep" aria-hidden="true">·</span>
+                          <strong className="market-trend-evidence-key">{item.label}</strong>
+                          <span className="market-trend-evidence-divider" aria-hidden="true" />
+                          <span className="market-trend-evidence-value">{item.value}{item.unit ? ` ${item.unit}` : ''}</span>
+                          <span className="market-trend-evidence-sep" aria-hidden="true">·</span>
+                          <span className="market-trend-evidence-value">confidence <span className="market-trend-evidence-confidence">{item.confidence}%</span></span>
+                          {item.freshness_hours !== undefined && item.freshness_hours !== null && (
+                            <>
+                              <span className="market-trend-evidence-sep" aria-hidden="true">·</span>
+                              <span className="market-trend-evidence-value">fresh <span className="market-trend-evidence-fresh">{item.freshness_hours}h</span></span>
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -1943,57 +1981,127 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
       {showSections.ordersIntake && (
         <motion.section className="panel order-intake-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.1 }}>
-          <div className="panel-head">
-            <h2>Layer 1: Customer Order Intake + BOM Explosion</h2>
-            <p>What just came in, and what does it need? Intake, BOM explosion, category expansion, criticality, and inventory countdown.</p>
+
+          {/* ── Header ── */}
+          <div className="panel-head" style={{ paddingBottom: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                background: 'linear-gradient(135deg, #1a3a6b 0%, #0d1f40 100%)',
+                border: '1px solid #2a4f8f',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+              }}>📦</div>
+              <div style={{ flex: 1 }}>
+                <h2 style={{ margin: 0 }}>Layer 1: Customer Order Intake + BOM Explosion</h2>
+                <p style={{ margin: '3px 0 0' }}>What just came in, and what does it need? Intake, BOM explosion, category expansion, criticality, and inventory countdown.</p>
+              </div>
+              <span style={{
+                flexShrink: 0, padding: '4px 10px', borderRadius: 999, fontSize: 10,
+                fontFamily: 'var(--font-sans)', letterSpacing: '.06em',
+                background: orderLoading ? '#0a1a0a' : '#081812',
+                border: `1px solid ${orderLoading ? '#2a5a2a' : '#1a6a3a'}`,
+                color: orderLoading ? '#5aaf5a' : 'var(--mint)',
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: orderLoading ? '#5aaf5a' : 'var(--mint)',
+                  boxShadow: orderLoading ? '0 0 6px #5aaf5a' : '0 0 6px var(--mint)',
+                }} />
+                {orderLoading ? 'INGESTING…' : 'AUTO-INTAKE LIVE'}
+              </span>
+            </div>
           </div>
-          <div className="order-auto-status order-auto-controls">
-            <label>Product SKU
-              <select className="ghost-select" value={orderDraft.skuId} onChange={(e) => setOrderDraft((prev) => ({ ...prev, skuId: e.target.value }))}>
-                <option value="xps-15-i9-rtx4080">XPS 15 i9 RTX 4080</option>
-                <option value="latitude-14-u7">Latitude 14 Ultra 7</option>
-              </select>
-            </label>
-            <label>Quantity
-              <input className="ghost-input" type="number" min="1" value={orderDraft.quantity} onChange={(e) => setOrderDraft((prev) => ({ ...prev, quantity: Number(e.target.value) }))} />
-            </label>
-            <label>Region
-              <input className="ghost-input" value={orderDraft.region} onChange={(e) => setOrderDraft((prev) => ({ ...prev, region: e.target.value }))} />
-            </label>
-            <label>Priority
-              <select className="ghost-select" value={orderDraft.customerPriority} onChange={(e) => setOrderDraft((prev) => ({ ...prev, customerPriority: e.target.value }))}>
-                <option value="standard">Standard</option>
-                <option value="high">High</option>
-                <option value="expedite">Expedite</option>
-              </select>
-            </label>
-            <div><span>Scope Source</span><strong>Automatic Intake</strong></div>
-            <button className="flow-btn" onClick={() => { orderIngestKeyRef.current = ''; ingestOrder() }} disabled={orderLoading}>{orderLoading ? 'Refreshing...' : 'Refresh BOM'}</button>
+
+          {/* ── Order Configuration Card ── */}
+          <div style={{
+            marginTop: 14, padding: '12px 14px',
+            background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12,
+          }}>
+            <div style={{
+              fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)',
+              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10,
+            }}>Order Configuration</div>
+            <div className="order-auto-status order-auto-controls">
+              <label>Product SKU
+                <select className="ghost-select" value={orderDraft.skuId} onChange={(e) => setOrderDraft((prev) => ({ ...prev, skuId: e.target.value }))}>
+                  <option value="xps-15-i9-rtx4080">XPS 15 i9 RTX 4080</option>
+                  <option value="latitude-14-u7">Latitude 14 Ultra 7</option>
+                </select>
+              </label>
+              <label>Quantity
+                <input className="ghost-input" type="number" min="1" value={orderDraft.quantity} onChange={(e) => setOrderDraft((prev) => ({ ...prev, quantity: Number(e.target.value) }))} />
+              </label>
+              <label>Region
+                <input className="ghost-input" value={orderDraft.region} onChange={(e) => setOrderDraft((prev) => ({ ...prev, region: e.target.value }))} />
+              </label>
+              <label>Priority
+                <select className="ghost-select" value={orderDraft.customerPriority} onChange={(e) => setOrderDraft((prev) => ({ ...prev, customerPriority: e.target.value }))}>
+                  <option value="standard">Standard</option>
+                  <option value="high">High</option>
+                  <option value="expedite">Expedite</option>
+                </select>
+              </label>
+              <div><span>Scope Source</span><strong>Automatic Intake</strong></div>
+              <button className="flow-btn" onClick={() => { orderIngestKeyRef.current = ''; ingestOrder() }} disabled={orderLoading}>
+                {orderLoading ? 'Refreshing…' : 'Refresh BOM'}
+              </button>
+            </div>
           </div>
+
           {orderError && <p className="flow-error">{orderError}</p>}
 
+          {/* ── Executive Snapshot ── */}
           {executiveSnapshot && (
-            <div className={`executive-strip ${executiveSnapshot.status === 'red' ? 'critical' : 'stable'}`}>
-              <div><span>Decision</span><strong>{executiveSnapshot.decision}</strong></div>
-              <div><span>Critical at Risk</span><strong>{executiveSnapshot.critical_components_at_risk}</strong></div>
-              <div><span>Intervention Deadline</span><strong>{executiveSnapshot.closest_intervention_deadline_days}d</strong></div>
-              <div><span>Orders Impacted</span><strong>{executiveSnapshot.orders_impacted_percent}%</strong></div>
-              <div><span>Revenue at Risk</span><strong>${Number(executiveSnapshot.estimated_revenue_at_risk || 0).toLocaleString()}</strong></div>
+            <div style={{
+              marginTop: 12, padding: '12px 14px', borderRadius: 10,
+              background: executiveSnapshot.status === 'red' ? '#1a050e' : '#06110d',
+              border: `1px solid ${executiveSnapshot.status === 'red' ? '#5c1020' : '#0f4a2a'}`,
+              borderLeft: `3px solid ${executiveSnapshot.status === 'red' ? 'var(--rose)' : 'var(--mint)'}`,
+            }}>
+              <div style={{
+                fontSize: 10, fontFamily: 'var(--font-sans)', letterSpacing: '.06em', textTransform: 'uppercase',
+                color: executiveSnapshot.status === 'red' ? 'var(--rose)' : 'var(--mint)',
+                marginBottom: 10,
+              }}>
+                {executiveSnapshot.status === 'red' ? '⚠  Critical Alert — Immediate Action Required' : '✓  Executive Snapshot'}
+              </div>
+              <div className={`executive-strip ${executiveSnapshot.status === 'red' ? 'critical' : 'stable'}`} style={{ margin: 0 }}>
+                <div><span>Decision</span><strong>{executiveSnapshot.decision}</strong></div>
+                <div><span>Critical at Risk</span><strong>{executiveSnapshot.critical_components_at_risk}</strong></div>
+                <div><span>Intervention Deadline</span><strong>{executiveSnapshot.closest_intervention_deadline_days}d</strong></div>
+                <div><span>Orders Impacted</span><strong>{executiveSnapshot.orders_impacted_percent}%</strong></div>
+                <div><span>Revenue at Risk</span><strong>${Number(executiveSnapshot.estimated_revenue_at_risk || 0).toLocaleString()}</strong></div>
+              </div>
             </div>
           )}
 
           {orderContext?.bom ? (
             <>
-              <div className="order-summary-strip">
-                <div><span>Order</span><strong>{orderContext.order_id}</strong></div>
-                <div><span>SKU</span><strong>{orderContext.sku_name}</strong></div>
-                <div><span>Region</span><strong>{orderContext.region}</strong></div>
-                <div><span>Components</span><strong>{orderContext.bom.summary.component_count}</strong></div>
-                <div><span>Critical</span><strong>{orderContext.bom.summary.critical_count}</strong></div>
-                <div><span>Order Timestamp</span><strong>{new Date(orderContext.created_at).toLocaleString()}</strong></div>
+              {/* ── Order Summary ── */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{
+                  fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)',
+                  letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8,
+                }}>
+                  BOM Explosion Complete · {orderContext.bom.summary.component_count} Components Identified
+                </div>
+                <div className="order-summary-strip" style={{ gridTemplateColumns: 'repeat(5, minmax(120px, 1fr))' }}>
+                  <div><span>Order ID</span><strong>{orderContext.order_id}</strong></div>
+                  <div><span>SKU</span><strong>{orderContext.sku_name}</strong></div>
+                  <div><span>Region</span><strong>{orderContext.region}</strong></div>
+                  <div>
+                    <span>Critical / Total</span>
+                    <strong style={{ color: orderContext.bom.summary.critical_count > 0 ? 'var(--rose)' : 'var(--mint)' }}>
+                      {orderContext.bom.summary.critical_count} / {orderContext.bom.summary.component_count}
+                    </strong>
+                  </div>
+                  <div><span>Ingested At</span><strong>{new Date(orderContext.created_at).toLocaleString()}</strong></div>
+                </div>
               </div>
 
-              <div className="bom-category-row">
+              {/* ── Category Filter ── */}
+              <div className="bom-category-row" style={{ marginTop: 12 }}>
                 <button className={`ghost-btn ${selectedBomCategory === 'all' ? 'active' : ''}`} onClick={() => setSelectedBomCategory('all')}>All Categories</button>
                 {bomCategoryOptions.map((category) => (
                   <button key={category} className={`ghost-btn ${selectedBomCategory === category ? 'active' : ''}`} onClick={() => setSelectedBomCategory(category)}>
@@ -2002,19 +2110,42 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 ))}
               </div>
 
+              {/* ── Criticality Buckets ── */}
               <div className="bom-buckets">
-                {['critical', 'important', 'substitutable'].map((bucket) => (
-                  <div key={bucket} className="bom-bucket-card">
-                    <h4>{bucket.toUpperCase()}</h4>
-                    <ul>
-                      {(orderContext.bom.criticality_buckets[bucket] || []).slice(0, 5).map((component) => (
-                        <li key={`${bucket}-${component.component_id}`}>{component.component_name} · {component.days_to_stockout_disruption}d</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                {[
+                  { key: 'critical',      label: '⚠ CRITICAL',      color: 'var(--rose)',  bg: '#1a050e', border: '#5c1020' },
+                  { key: 'important',     label: '↑ IMPORTANT',     color: 'var(--amber)', bg: '#1a0f02', border: '#4a2a00' },
+                  { key: 'substitutable', label: '✓ SUBSTITUTABLE', color: 'var(--mint)',  bg: '#06110d', border: '#0f4a2a' },
+                ].map(({ key, label, color, bg, border }) => {
+                  const items = orderContext.bom.criticality_buckets[key] || []
+                  return (
+                    <div key={key} className="bom-bucket-card" style={{ background: bg, borderColor: border, borderLeft: `3px solid ${color}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <h4 style={{ color, fontSize: 10, letterSpacing: '.08em', margin: 0 }}>{label}</h4>
+                        <span style={{
+                          padding: '1px 8px', borderRadius: 999, fontSize: 11,
+                          fontFamily: 'var(--font-sans)', fontWeight: 700, background: border, color,
+                        }}>{items.length}</span>
+                      </div>
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                        {items.slice(0, 5).map((component) => (
+                          <li key={`${key}-${component.component_id}`} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11,
+                          }}>
+                            <span style={{ color: 'var(--text-mid)' }}>{component.component_name}</span>
+                            <span style={{ color, fontFamily: 'var(--font-sans)', fontSize: 11.5, fontWeight: 700 }}>
+                              {component.days_to_stockout_disruption}d
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })}
               </div>
 
+              {/* ── BOM Tree Table ── */}
               <div className="bom-tree-wrap">
                 <table className="bom-tree-table">
                   <thead>
@@ -2031,38 +2162,91 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleBomComponents.map((component) => (
-                      <tr
-                        key={component.component_id}
-                        className={`${component.is_critical_alert ? 'row-alert' : ''} ${selectedRiskComponentId === component.component_id ? 'row-selected' : ''}`}
-                        onClick={() => setSelectedRiskComponentId(component.component_id)}
-                      >
-                        <td>{component.component_name}</td>
-                        <td>{component.criticality}</td>
-                        <td><span className={`status-pill ${component.status}`}>{component.status}</span></td>
-                        <td>{component.criticality_score}</td>
-                        <td>{component.qty_per_unit}</td>
-                        <td>{component.days_to_stockout_baseline}d</td>
-                        <td>{component.days_to_stockout_disruption}d</td>
-                        <td>{component.stockout_delta_days}d</td>
-                        <td>{component.intervention_day}d</td>
-                      </tr>
-                    ))}
+                    {visibleBomComponents.map((component) => {
+                      const riskScore = Number(component.criticality_score || 0)
+                      const riskColor = riskScore > 70 ? 'var(--rose)' : riskScore > 40 ? 'var(--amber)' : 'var(--mint)'
+                      const critColor = component.criticality === 'critical' ? 'var(--rose)' : component.criticality === 'important' ? 'var(--amber)' : 'var(--mint)'
+                      const critBg = component.criticality === 'critical' ? '#2a0810' : component.criticality === 'important' ? '#1a0f02' : '#06110d'
+                      const critBorder = component.criticality === 'critical' ? '#5c1020' : component.criticality === 'important' ? '#4a2a00' : '#0f4a2a'
+                      const deltaVal = Number(component.stockout_delta_days || 0)
+                      const interventionVal = Number(component.intervention_day || 0)
+                      const disruptionRunway = Number(component.days_to_stockout_disruption || 0)
+                      return (
+                        <tr
+                          key={component.component_id}
+                          className={`${component.is_critical_alert ? 'row-alert' : ''} ${selectedRiskComponentId === component.component_id ? 'row-selected' : ''}`}
+                          onClick={() => setSelectedRiskComponentId(component.component_id)}
+                        >
+                          <td><strong style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 12 }}>{component.component_name}</strong></td>
+                          <td>
+                            <span style={{
+                              padding: '2px 7px', borderRadius: 999, fontSize: 10,
+                              fontFamily: 'var(--font-sans)', fontWeight: 600, letterSpacing: '.04em',
+                              background: critBg, color: critColor, border: `1px solid ${critBorder}`,
+                            }}>{component.criticality}</span>
+                          </td>
+                          <td><span className={`status-pill ${component.status}`}>{component.status}</span></td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ color: riskColor, minWidth: 22 }}>{riskScore}</span>
+                              <div style={{ width: 36, height: 4, borderRadius: 2, background: '#0d1a2a', overflow: 'hidden' }}>
+                                <div style={{
+                                  width: `${Math.min(100, riskScore)}%`, height: '100%',
+                                  background: riskColor, borderRadius: 2,
+                                }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td>{component.qty_per_unit}</td>
+                          <td>{component.days_to_stockout_baseline}d</td>
+                          <td style={{ color: disruptionRunway < 15 ? 'var(--rose)' : 'var(--text-mid)' }}>
+                            <strong>{disruptionRunway}d</strong>
+                          </td>
+                          <td style={{ color: deltaVal < 0 ? 'var(--rose)' : 'var(--mint)', fontFamily: 'var(--font-sans)', fontWeight: 700 }}>
+                            {deltaVal > 0 ? '+' : ''}{deltaVal}d
+                          </td>
+                          <td style={{ color: interventionVal < 10 ? 'var(--rose)' : interventionVal < 20 ? 'var(--amber)' : 'var(--text-mid)', fontFamily: 'var(--font-sans)', fontWeight: 700 }}>
+                            <strong>{interventionVal}d</strong>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
 
-              <div className="flow-page-actions" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
+              <div className="flow-page-actions" style={{ marginTop: 14, justifyContent: 'flex-start' }}>
                 <button className="flow-btn primary" onClick={() => navigateToSection('risk-dashboard')}>
-                  {view === 'bom-intelligence' ? 'Continue to Disruption + Impact' : 'Continue to Risk Dashboard'}
+                  {view === 'bom-intelligence' ? 'Continue to Disruption + Impact →' : 'Continue to Risk Dashboard →'}
                 </button>
               </div>
-
             </>
           ) : (
-            <div className="section-placeholder" style={{ marginTop: 14 }}>
-              <h3>Preparing SKU Scope</h3>
-              <p>Orders Intake automatically expands SKU into BOM and computes runway for downstream agent analysis.</p>
+            <div style={{
+              marginTop: 20, padding: '32px 20px', textAlign: 'center',
+              background: '#06091a', border: '1px dashed #1a2d4f', borderRadius: 12,
+            }}>
+              <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.5 }}>📦</div>
+              <h3 style={{ color: 'var(--text-mid)', margin: '0 0 6px' }}>
+                {orderLoading ? 'Exploding BOM…' : 'Preparing SKU Scope'}
+              </h3>
+              <p style={{ color: 'var(--text-dim)', fontSize: 12, margin: 0 }}>
+                {orderLoading
+                  ? 'Analyzing bill of materials, computing criticality buckets and inventory runway…'
+                  : 'Orders Intake automatically expands SKU into BOM and computes runway for downstream agent analysis.'}
+              </p>
+              {orderLoading && (
+                <div style={{
+                  marginTop: 16, height: 3, background: '#0d1a2a', borderRadius: 2,
+                  overflow: 'hidden', maxWidth: 200, margin: '16px auto 0',
+                }}>
+                  <div style={{
+                    height: '100%', width: '60%',
+                    background: 'linear-gradient(90deg, var(--cyan) 0%, var(--violet) 100%)',
+                    borderRadius: 2,
+                  }} />
+                </div>
+              )}
             </div>
           )}
         </motion.section>

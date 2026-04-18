@@ -120,7 +120,7 @@ export default function ResultsDashboardPage() {
               {tab.label}
             </Link>
           ))}
-          <button className="flow-btn" onClick={startNewFlow}>Start New Flow</button>
+          <button className="flow-btn results-start-new-flow" onClick={startNewFlow}>Start New Flow</button>
         </div>
       </div>
 
