@@ -371,20 +371,121 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   transition: border-color var(--transition), background var(--transition);
 }
 .event-card:hover { border-color: var(--border-hi); background: #0a1628; }
-.event-card.selected { border-color: var(--cyan); background: var(--cyan-dim); }
+.event-card.selected { border-color: var(--cyan); background: var(--cyan-dim); box-shadow: 0 0 0 1px #00bfff30, 0 0 16px #00bfff18; }
 .event-icon { font-size: 18px; }
 .event-name { font-size: 11px; font-weight: 600; color: var(--text); line-height: 1.3; }
-.severity { font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; font-weight: 700; }
+.severity { font-family: var(--font-sans); font-size: 9.5px; letter-spacing: .06em; font-weight: 700; }
 .severity.critical { color: var(--rose); }
 .severity.high     { color: var(--amber); }
-.severity.medium   { color: var(--cyan); }
+.severity.medium   { color: var(--mint); }
+
+/* ── Disruption Impact — redesigned event cards ── */
+.di-filter-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.di-filter-tab {
+  font-family: var(--font-sans); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.05em; padding: 3px 11px; border-radius: 999px;
+  border: 1px solid var(--border-hi); background: transparent;
+  color: var(--text-dim); cursor: pointer; transition: all var(--transition);
+}
+.di-filter-tab:hover { border-color: var(--cyan); color: var(--cyan); }
+.di-filter-tab.active { background: var(--cyan-dim); border-color: var(--cyan); color: var(--cyan); }
+
+.event-card.di-event-card {
+  position: relative;
+  padding: 14px 12px 10px;
+  gap: 7px;
+  background: #060e1c;
+}
+.event-card.di-event-card:hover { background: #08142a; }
+.event-card.di-event-card.selected { background: #04111e; }
+
+.di-category-badge {
+  position: absolute; top: 9px; right: 9px;
+  font-family: var(--font-sans); font-size: 8.5px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px; border: 1px solid;
+}
+.di-icon-box {
+  width: 38px; height: 38px; border-radius: 9px; border: 1px solid;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.di-event-name {
+  font-family: var(--font-sans); font-size: 12.5px; font-weight: 700;
+  color: var(--text); line-height: 1.3; padding-right: 44px;
+}
+.di-event-footer {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+}
+.di-event-region {
+  font-family: var(--font-sans); font-size: 9.5px; color: var(--text-dim);
+}
+
+/* ── Disruption Impact — Component + Config section ── */
+.di-comp-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.di-comp-chip {
+  display: flex; align-items: center; gap: 7px;
+  background: #04091a; border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 14px;
+  cursor: pointer; transition: all var(--transition);
+}
+.di-comp-chip:hover { border-color: var(--border-hi); background: #06102a; }
+.di-comp-name { font-family: var(--font-sans); font-size: 11px; font-weight: 600; }
+.di-comp-runway { font-family: var(--font-sans); font-size: 11.5px; font-weight: 700; }
+
+.di-config-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.di-config-card {
+  background: #030911; border: 1px solid #192840;
+  border-radius: 10px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.di-config-label {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.di-config-value {
+  font-family: var(--font-sans); font-size: 14px; font-weight: 700;
+  color: var(--text); line-height: 1.25;
+}
+.di-config-sub {
+  font-family: var(--font-sans); font-size: 10px; color: var(--text-dim); margin-top: 1px;
+}
+
+.di-stat-bar {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: #030911; border: 1px solid #192840;
+  border-radius: 8px; overflow: hidden;
+}
+.di-stat-item {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 14px; border-right: 1px solid #192840;
+}
+.di-stat-item:last-child { border-right: none; }
+.di-stat-label {
+  font-family: var(--font-sans); font-size: 8.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+}
+.di-stat-value {
+  font-family: var(--font-sans); font-size: 13px; font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .di-config-cards { grid-template-columns: 1fr; }
+  .di-stat-bar { grid-template-columns: repeat(3, 1fr); }
+  .di-stat-item { border-right: none; border-bottom: 1px solid #192840; }
+  .di-stat-item:last-child { border-bottom: none; }
+}
 
 .component-selector { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 .comp-chip {
   display: flex; align-items: center; gap: 6px;
   background: #060f1e; border: 1px solid var(--border);
   border-radius: 6px; padding: 5px 10px;
-  font-family: var(--font-mono); font-size: 10px; color: var(--text-mid);
+  font-family: var(--font-sans); font-size: 10px; color: var(--text-mid);
   cursor: pointer; transition: all var(--transition);
 }
 .comp-chip:hover  { border-color: var(--border-hi); }
@@ -405,7 +506,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   border: 1px solid var(--border-hi);
   border-radius: 999px;
   padding: 5px 10px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
   color: var(--text-dim);
   background: #09192f;
@@ -1005,8 +1106,8 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
 }
 
 /* ReactFlow knowledge graph */
-.graph2-canvas { height: 420px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-.graph2-empty  { display: flex; align-items: center; justify-content: center; height: 260px; border: 1px dashed var(--border); border-radius: var(--radius); }
+.graph2-canvas { height: 280px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.graph2-empty  { display: flex; align-items: center; justify-content: center; height: 200px; border: 1px dashed var(--border); border-radius: var(--radius); }
 .graph2-empty p { color: var(--text-dim); font-size: 11px; }
 
 /* ── Scenario Filmstrip ──────────────────────────────── */
@@ -2692,7 +2793,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
 .swarm-graph-subtitle {
   color: #2a5a7a;
   font-size: 0.65rem;
-  font-family: 'SF Mono', 'Fira Mono', monospace;
+  font-family: var(--font-sans);
 }
 
 /* Graph legend */
@@ -2713,7 +2814,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   gap: 5px;
   color: #4a7a90;
   font-size: 0.6rem;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   white-space: nowrap;
 }
 
@@ -2755,7 +2856,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
 
 .swarm-status-badge {
   font-size: 0.58rem;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   font-weight: 700;
   padding: 2px 7px;
   border-radius: 4px;
@@ -2845,7 +2946,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   border: 1px solid rgba(255, 156, 77, 0.4);
   border-radius: 4px;
   padding: 2px 6px;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   font-weight: 700;
   letter-spacing: 0.05em;
 }
@@ -2859,7 +2960,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
 .swarm-signal-value {
   font-size: 1.15rem;
   font-weight: 700;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   line-height: 1.2;
 }
 
@@ -2877,7 +2978,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   font-size: 0.6rem;
   padding: 3px 8px;
   cursor: pointer;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   flex-shrink: 0;
   transition: background 0.15s;
 }
@@ -2888,7 +2989,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
   font-weight: 700;
   letter-spacing: 0.04em;
   flex-shrink: 0;
@@ -2900,7 +3001,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
   font-size: 0.62rem;
   padding: 2px 7px;
   border-radius: 4px;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
 }
 
 /* Completion banner */
@@ -2925,7 +3026,7 @@ h4 { font-size: 10px; font-family: var(--font-mono); letter-spacing: .08em; text
 .swarm-completion-sub {
   color: #4a7a90;
   font-size: 0.72rem;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-sans);
 }
 
 /* Deploying spinner */

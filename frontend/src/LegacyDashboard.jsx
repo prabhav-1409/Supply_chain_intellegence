@@ -67,6 +67,22 @@ const defaultTriggerTypeByEvent = {
   'tsmc-factory-fire': 'commodity-spike',
 }
 
+const EVENT_META = {
+  'taiwan-earthquake':  { category: 'Commodity', region: 'APAC',   type: 'Seismic',    iconBg: '#1a1206', iconBorder: '#6b4a10' },
+  'us-china-tariff':    { category: 'Tariff',    region: 'US',     type: 'Policy',     iconBg: '#060e20', iconBorder: '#0a3a6e' },
+  'hormuz-closure':     { category: 'Vessel',    region: 'MENA',   type: 'Maritime',   iconBg: '#04151a', iconBorder: '#0a4a52' },
+  'us-china-trade-war': { category: 'Tariff',    region: 'Global', type: 'Policy',     iconBg: '#060e20', iconBorder: '#0a3a6e' },
+  'malaysia-floods':    { category: 'Port',      region: 'SEA',    type: 'Climate',    iconBg: '#04101e', iconBorder: '#0a2e5a' },
+  'tsmc-factory-fire':  { category: 'Commodity', region: 'APAC',   type: 'Industrial', iconBg: '#1a0806', iconBorder: '#6b1a10' },
+}
+
+const CATEGORY_COLOR = {
+  Commodity: '#f0b429',
+  Tariff:    '#4a9eff',
+  Vessel:    '#1ad4aa',
+  Port:      '#a78bfa',
+}
+
 function LiveAgentCard({ agentLabel, insight, fallbackTitle, fallbackBody, isWorking, timeline = [], onOpenDebug }) {
   const summary = insight?.summary || fallbackTitle
   const body = fallbackBody || ''
@@ -223,6 +239,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const [impactTrigger, setImpactTrigger] = useState(null)
   const [impactTriggerType, setImpactTriggerType] = useState(defaultTriggerTypeByEvent[initialEventId] || 'tariff')
   const [impactTariffProfile, setImpactTariffProfile] = useState({ cn: 145, mx: 0, kr: 18, jp: 14, in: 10, other: 25 })
+  const [eventCategoryFilter, setEventCategoryFilter] = useState('all')
   const [selectedImpactComponentId, setSelectedImpactComponentId] = useState('')
   const [simulationTargetMarginPct, setSimulationTargetMarginPct] = useState(22)
   const [simulationLockedRevenueUnit, setSimulationLockedRevenueUnit] = useState(0)
@@ -1694,7 +1711,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }
 
   return (
-    <div ref={shellRef} className={`shell ${view === 'bom-intelligence' ? 'bom-intelligence-typography' : ''}`}>
+    <div ref={shellRef} className="shell bom-intelligence-typography">
       <AmbientBackground />
 
       <BoardroomMode
@@ -2253,79 +2270,147 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       )}
 
       {view === 'disruption-impact' && (
-        <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
-          <div className="panel-head">
-            <h2>Page 2: Disruption + Impact</h2>
-            <p>What changed, and how does it alter our economics?</p>
-          </div>
+        <motion.section className="panel order-intake-panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
 
-          <div className="event-grid">
-            {(state?.events || []).map((event) => (
-              <motion.button key={event.id} className={`event-card ${selectedEventId === event.id ? 'selected' : ''}`} onClick={() => resetEvent(event.id)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
-                <span className="event-icon">{event.icon}</span>
-                <span className="event-name">{event.name}</span>
-                <span className="agent-meta">{disruptionTriggerOptions.find((opt) => opt.value === (defaultTriggerTypeByEvent[event.id] || 'tariff'))?.label || 'Event Trigger'}</span>
-              </motion.button>
-            ))}
-          </div>
-          <div className="component-selector" style={{ marginTop: 10 }}>
-            {missionAnalyticalComponents.map((component) => (
-              <button key={component.id} className={`comp-chip ${selectedComponentId === component.id ? 'selected' : ''}`} onClick={() => setSelectedComponentId(component.id)}>
-                <span className={`crit-dot ${component.criticality}`} />
-                {component.name}{component.runway ? ` · ${component.runway}d` : ''}
-              </button>
-            ))}
-          </div>
-
-          <div className="order-auto-status order-auto-controls" style={{ marginTop: 10 }}>
-            <label>Trigger Type
-              <select className="ghost-select" value={impactTriggerType} onChange={(e) => setImpactTriggerType(e.target.value)}>
-                {disruptionTriggerOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <div><span>Primary Mode</span><strong>{impactTriggerType === 'tariff' ? 'US Tariff Schedule' : 'Operational Shock'}</strong></div>
-            <div><span>Selected Event</span><strong>{selectedEvent?.name || selectedEventId}</strong></div>
-          </div>
-          {impactTriggerType === 'tariff' && (
-            <div className="decision-grid" style={{ marginTop: 8 }}>
-              <label>China (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.cn} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, cn: Number(e.target.value || 0) }))} />
-              </label>
-              <label>Mexico (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.mx} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, mx: Number(e.target.value || 0) }))} />
-              </label>
-              <label>Korea (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.kr} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, kr: Number(e.target.value || 0) }))} />
-              </label>
-              <label>Japan (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.jp} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, jp: Number(e.target.value || 0) }))} />
-              </label>
-              <label>India (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.in} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, in: Number(e.target.value || 0) }))} />
-              </label>
-              <label>Other (%)
-                <input className="ghost-input" type="number" value={impactTariffProfile.other} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, other: Number(e.target.value || 0) }))} />
-              </label>
-            </div>
-          )}
-
-          <div className="flow-page-actions" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
-            <button className="flow-btn primary" onClick={triggerDisruptionImpact} disabled={!activeOrderId || !activeDecisionComponentId}>
-              Trigger Event + Deploy AI Swarm
-            </button>
-            {isImpactTriggered && (
-              <span className="agent-meta" style={{ alignSelf: 'center' }}>
-                Triggered: {selectedEvent?.name || selectedEventId} ({impactTriggerType}) on {activeDecisionComponentId}
+          {/* ── Header ── */}
+          <div className="panel-head" style={{ paddingBottom: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg, #3d0a0a, #1a0505)', border: '1px solid #7f2020', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>⚡</div>
+              <div style={{ flex: 1 }}>
+                <h2>Layer 2: Event Trigger + Disruption Impact</h2>
+                <p style={{ margin: '3px 0 0', color: 'var(--text-dim)', fontFamily: 'var(--font-sans)', fontSize: 12 }}>Select a global disruption event and the affected component. The AI swarm maps causal propagation, vendor exposure, and real-time cost impact.</p>
+              </div>
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: isImpactTriggered ? 'var(--mint)' : 'var(--text-dim)', border: `1px solid ${isImpactTriggered ? 'var(--mint)' : 'var(--border-hi)'}`, borderRadius: 999, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, letterSpacing: '0.07em', textTransform: 'uppercase', background: isImpactTriggered ? '#0d2516' : 'transparent' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: isImpactTriggered ? 'var(--mint)' : 'var(--text-dim)', display: 'inline-block' }} />
+                {isImpactTriggered ? 'Swarm Deployed' : 'Awaiting Trigger'}
               </span>
+            </div>
+          </div>
+
+          {/* ── Event Selection Card ── */}
+          <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600 }}>Select Disruption Event</div>
+              <div className="di-filter-tabs">
+                {['All', 'Commodity', 'Tariff', 'Vessel', 'Port'].map((tab) => (
+                  <button key={tab} className={`di-filter-tab ${eventCategoryFilter === tab.toLowerCase() ? 'active' : ''}`} onClick={() => setEventCategoryFilter(tab.toLowerCase())}>{tab}</button>
+                ))}
+              </div>
+            </div>
+            <div className="event-grid">
+              {(state?.events || [])
+                .filter((event) => eventCategoryFilter === 'all' || (EVENT_META[event.id]?.category || '').toLowerCase() === eventCategoryFilter)
+                .map((event) => {
+                  const meta = EVENT_META[event.id] || {}
+                  const catColor = CATEGORY_COLOR[meta.category] || '#4a7a90'
+                  const sevClass = (event.severity || 'high').toLowerCase()
+                  return (
+                    <motion.button key={event.id} className={`event-card di-event-card ${selectedEventId === event.id ? 'selected' : ''}`} onClick={() => resetEvent(event.id)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+                      <span className="di-category-badge" style={{ color: catColor, borderColor: `${catColor}55`, background: `${catColor}14` }}>{meta.category || 'Event'}</span>
+                      <div className="di-icon-box" style={{ background: meta.iconBg || '#06091a', borderColor: meta.iconBorder || '#1a2d4f' }}>
+                        <span style={{ fontSize: 20 }}>{event.icon}</span>
+                      </div>
+                      <div className="di-event-name">{event.name}</div>
+                      <div className="di-event-footer">
+                        <span className="di-event-region">{meta.region && meta.type ? `${meta.region} · ${meta.type}` : ''}</span>
+                        <span className={`severity ${sevClass}`}>● {event.severity}</span>
+                      </div>
+                    </motion.button>
+                  )
+                })
+              }
+            </div>
+          </div>
+
+          {/* ── Affected Component + Configuration Card ── */}
+          <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600 }}>Affected Component + Configuration</div>
+
+            {/* Component selector strip */}
+            <div className="di-comp-strip">
+              {missionAnalyticalComponents.map((component) => {
+                const isSelected = selectedComponentId === component.id
+                const critColor = component.criticality === 'critical' ? 'var(--rose)' : component.criticality === 'important' ? 'var(--amber)' : 'var(--mint)'
+                return (
+                  <button key={component.id} className={`di-comp-chip ${isSelected ? 'selected' : ''}`} style={isSelected ? { borderColor: critColor, background: `${component.criticality === 'critical' ? '#ff406012' : component.criticality === 'important' ? '#ffbe6812' : '#39d35312'}` } : {}} onClick={() => setSelectedComponentId(component.id)}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: critColor, display: 'inline-block', flexShrink: 0, boxShadow: isSelected ? `0 0 6px 1px ${critColor}` : 'none' }} />
+                    <span className="di-comp-name" style={{ color: isSelected ? 'var(--text)' : 'var(--text-mid)' }}>{component.name}</span>
+                    {component.runway && <span className="di-comp-runway" style={{ color: isSelected ? critColor : 'var(--text-dim)' }}>{component.runway}d</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* 3 info cards */}
+            <div className="di-config-cards">
+              <div className="di-config-card">
+                <div className="di-config-label"><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)', display: 'inline-block' }} />Trigger Type</div>
+                <div className="di-config-value" style={{ color: 'var(--amber)' }}>{disruptionTriggerOptions.find((o) => o.value === impactTriggerType)?.label || impactTriggerType}</div>
+                <div className="di-config-sub">Auto-detected from event</div>
+              </div>
+              <div className="di-config-card">
+                <div className="di-config-label"><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', display: 'inline-block' }} />Primary Mode</div>
+                <div className="di-config-value">{impactTriggerType === 'tariff' ? 'US Tariff Schedule' : 'Operational Shock'}</div>
+                <div className="di-config-sub">Swarm deployment mode</div>
+              </div>
+              <div className="di-config-card">
+                <div className="di-config-label"><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', display: 'inline-block' }} />Selected Event</div>
+                <div className="di-config-value">{selectedEvent?.name || '—'}</div>
+                <div className="di-config-sub">{selectedEvent ? [EVENT_META[selectedEventId]?.region, EVENT_META[selectedEventId]?.type, selectedEvent.severity].filter(Boolean).join(' · ') : 'No event selected'}</div>
+              </div>
+            </div>
+
+            {/* 5-column stat bar */}
+            <div className="di-stat-bar">
+              {[
+                { label: 'Component',     value: missionAnalyticalComponents.find((c) => c.id === selectedComponentId)?.name || activeDecisionComponentId || '—',          color: 'var(--rose)'  },
+                { label: 'Lead Time',     value: missionAnalyticalComponents.find((c) => c.id === selectedComponentId)?.runway ? `${missionAnalyticalComponents.find((c) => c.id === selectedComponentId).runway}d` : '—', color: 'var(--amber)' },
+                { label: 'Risk Exposure', value: selectedEvent?.severity || '—',  color: selectedEvent?.severity === 'CRITICAL' ? 'var(--rose)' : selectedEvent?.severity === 'HIGH' ? 'var(--amber)' : 'var(--mint)' },
+                { label: 'Swarm Agents',  value: `${totalAgents} ready`,           color: 'var(--text)' },
+                { label: 'Mode',          value: agentMode,                        color: agentMode === 'LLM' ? 'var(--mint)' : 'var(--text-mid)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="di-stat-item">
+                  <span className="di-stat-label">{label}</span>
+                  <span className="di-stat-value" style={{ color }}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Tariff profile inputs — shown only when tariff trigger is active */}
+            {impactTriggerType === 'tariff' && (
+              <div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)', letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 600, marginBottom: 8 }}>Tariff Profile (%)</div>
+                <div className="decision-grid">
+                  <label>China (%) <input className="ghost-input" type="number" value={impactTariffProfile.cn} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, cn: Number(e.target.value || 0) }))} /></label>
+                  <label>Mexico (%) <input className="ghost-input" type="number" value={impactTariffProfile.mx} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, mx: Number(e.target.value || 0) }))} /></label>
+                  <label>Korea (%) <input className="ghost-input" type="number" value={impactTariffProfile.kr} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, kr: Number(e.target.value || 0) }))} /></label>
+                  <label>Japan (%) <input className="ghost-input" type="number" value={impactTariffProfile.jp} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, jp: Number(e.target.value || 0) }))} /></label>
+                  <label>India (%) <input className="ghost-input" type="number" value={impactTariffProfile.in} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, in: Number(e.target.value || 0) }))} /></label>
+                  <label>Other (%) <input className="ghost-input" type="number" value={impactTariffProfile.other} onChange={(e) => setImpactTariffProfile((prev) => ({ ...prev, other: Number(e.target.value || 0) }))} /></label>
+                </div>
+              </div>
             )}
           </div>
 
+          {/* ── Trigger Action ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="flow-btn primary" onClick={triggerDisruptionImpact} disabled={!activeOrderId || !activeDecisionComponentId} style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.04em', gap: 7, width: '100%', justifyContent: 'center', padding: '13px 20px', fontSize: 13 }}>
+              ⚡ Trigger Event + Deploy AI Swarm
+            </button>
+            {isImpactTriggered && (
+              <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--mint)', display: 'inline-block' }} />
+                {selectedEvent?.name || selectedEventId} · {impactTriggerType} · {activeDecisionComponentId}
+              </div>
+            )}
+          </div>
+
+          {/* ── Canvas ── */}
           {!isImpactTriggered ? (
-            <div className="section-placeholder">
-              <h3>Trigger Disruption First</h3>
-              <p>Select event and component, then click Trigger Event + Deploy AI Swarm to launch the knowledge graph and agent analysis.</p>
+            <div style={{ minHeight: 160, border: '1px dashed #1a2d4f', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#030710', padding: 24 }}>
+              <div style={{ fontSize: 28 }}>⚡</div>
+              <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, color: 'var(--text-mid)' }}>Awaiting Disruption Trigger</div>
+              <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-dim)', textAlign: 'center', maxWidth: 400 }}>Select an event and component above, then click Trigger Event + Deploy AI Swarm to launch the knowledge graph and agent analysis.</div>
             </div>
           ) : (
             <SwarmDeployCanvas
@@ -2742,44 +2827,76 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
       {/* ── Scenario Filmstrip ── */}
       {view === 'simulation-lab' && (
-        <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
-          <div className="panel-head">
-            <h2>Page 3: Price Simulation Engine</h2>
-            <p>Monte Carlo landed-cost simulation, negotiation ceiling, and break-even boundary by scenario.</p>
+        <motion.section className="panel order-intake-panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
+
+          {/* ── Header ── */}
+          <div className="panel-head" style={{ paddingBottom: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg, #0a0a2a, #060618)', border: '1px solid #3a2a7f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>📊</div>
+              <div style={{ flex: 1 }}>
+                <h2>Layer 3: Price Simulation Engine</h2>
+                <p style={{ margin: '3px 0 0', color: 'var(--text-dim)', fontFamily: 'var(--font-sans)', fontSize: 12 }}>Monte Carlo landed-cost simulation across scenarios — negotiation ceiling, break-even boundary, and confidence bands by risk profile.</p>
+              </div>
+              <span style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: profitRecommendationData ? 'var(--mint)' : 'var(--text-dim)', border: `1px solid ${profitRecommendationData ? 'var(--mint)' : 'var(--border-hi)'}`, borderRadius: 999, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, letterSpacing: '0.07em', textTransform: 'uppercase', background: profitRecommendationData ? '#0d2516' : 'transparent' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: profitRecommendationData ? 'var(--mint)' : 'var(--text-dim)', display: 'inline-block' }} />
+                {profitRecommendationData ? 'Simulation Ready' : 'Computing…'}
+              </span>
+            </div>
           </div>
+
           {!profitRecommendationData ? (
-            <div className="section-placeholder">
-              <h3>Running Monte Carlo Engine</h3>
-              <p>We generate optimistic/base/stressed/worst-case scenarios and compute full landed economics with confidence bands.</p>
+            <div style={{ minHeight: 160, border: '1px dashed #1a2d4f', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#030710', padding: 24 }}>
+              <div style={{ fontSize: 28 }}>📊</div>
+              <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 14, color: 'var(--text-mid)' }}>Running Monte Carlo Engine</div>
+              <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-dim)', textAlign: 'center', maxWidth: 440 }}>Generating optimistic / base / stressed / worst-case scenarios and computing full landed economics with confidence bands.</div>
             </div>
           ) : (
             <>
-              <p className="ops-context-note">{profitRecommendationData.headline}</p>
+              {profitRecommendationData.headline && (
+                <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 10, padding: '10px 14px', fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--text-mid)', borderLeft: '3px solid var(--violet)' }}>
+                  {profitRecommendationData.headline}
+                </div>
+              )}
 
-              <div className="order-auto-status order-auto-controls" style={{ marginTop: 8 }}>
-                <label>Locked Revenue per Unit ($)
-                  <input className="ghost-input" type="number" min="1" step="0.01" value={simulationLockedRevenueUnit} onChange={(e) => setSimulationLockedRevenueUnit(Number(e.target.value || 0))} />
-                </label>
-                <label>Target Margin (%)
-                  <input className="ghost-input" type="number" min="1" max="65" step="0.5" value={simulationTargetMarginPct} onChange={(e) => setSimulationTargetMarginPct(Number(e.target.value || 0))} />
-                </label>
-                <label>Freight Mode
-                  <select className="ghost-select" value={simulationFreightMode} onChange={(e) => setSimulationFreightMode(e.target.value)}>
-                    <option value="auto">Auto</option>
-                    <option value="sea">Sea</option>
-                    <option value="air">Air</option>
-                  </select>
-                </label>
-                <label>Monte Carlo Runs
-                  <input className="ghost-input" type="number" min="300" max="10000" step="100" value={simulationMonteCarloRuns} onChange={(e) => setSimulationMonteCarloRuns(Number(e.target.value || 1200))} />
-                </label>
+              {/* ── Simulation Parameters ── */}
+              <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', margin: '10px 0' }}>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', color: 'var(--text-dim)', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600, marginBottom: 10 }}>Simulation Parameters</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  <div style={{ background: '#030911', border: '1px solid #192840', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--mint)', display: 'inline-block', flexShrink: 0 }} />Locked Revenue / Unit</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, color: 'var(--text-mid)', flexShrink: 0 }}>$</span><input className="ghost-input" type="number" min="1" step="0.01" value={simulationLockedRevenueUnit} onChange={(e) => setSimulationLockedRevenueUnit(Number(e.target.value || 0))} style={{ flex: 1, minWidth: 0 }} /></div>
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)' }}>Revenue ceiling per unit</div>
+                  </div>
+                  <div style={{ background: '#030911', border: '1px solid #192840', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--amber)', display: 'inline-block', flexShrink: 0 }} />Target Margin</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><input className="ghost-input" type="number" min="1" max="65" step="0.5" value={simulationTargetMarginPct} onChange={(e) => setSimulationTargetMarginPct(Number(e.target.value || 0))} style={{ flex: 1, minWidth: 0 }} /><span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600, color: 'var(--text-mid)', flexShrink: 0 }}>%</span></div>
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)' }}>Margin floor threshold</div>
+                  </div>
+                  <div style={{ background: '#030911', border: '1px solid #192840', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--cyan)', display: 'inline-block', flexShrink: 0 }} />Freight Mode</div>
+                    <select className="ghost-select" value={simulationFreightMode} onChange={(e) => setSimulationFreightMode(e.target.value)} style={{ width: '100%', minWidth: 0 }}><option value="auto">Auto</option><option value="sea">Sea Freight</option><option value="air">Air Freight</option></select>
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)' }}>Transit cost model</div>
+                  </div>
+                  <div style={{ background: '#030911', border: '1px solid #192840', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--violet)', display: 'inline-block', flexShrink: 0 }} />Monte Carlo Runs</div>
+                    <input className="ghost-input" type="number" min="300" max="10000" step="100" value={simulationMonteCarloRuns} onChange={(e) => setSimulationMonteCarloRuns(Number(e.target.value || 1200))} style={{ width: '100%', minWidth: 0 }} />
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)' }}>Simulation sample count</div>
+                  </div>
+                </div>
               </div>
 
-              <div className="metrics-strip">
-                <div><span>Active Scenario</span><strong>{activeSimulationScenario?.scenario_name || '-'}</strong></div>
-                <div><span>Landed Cost / Component</span><strong>${Number(activeSimulationScenario?.landed_cost_per_unit || 0).toFixed(2)}</strong></div>
-                <div><span>Negotiation Ceiling</span><strong>${Number(activeSimulationScenario?.negotiation_ceiling_purchase_price || 0).toFixed(2)}</strong></div>
-                <div><span>Break-even Purchase</span><strong>${Number(activeSimulationScenario?.break_even_purchase_price || 0).toFixed(2)}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', background: '#030911', border: '1px solid #192840', borderRadius: 10, overflow: 'hidden' }}>
+                {[
+                  { label: 'Active Scenario',        value: activeSimulationScenario?.scenario_name || '—',                                             color: 'var(--text)' },
+                  { label: 'Landed Cost / Component', value: `$${Number(activeSimulationScenario?.landed_cost_per_unit || 0).toFixed(2)}`,               color: 'var(--cyan)' },
+                  { label: 'Negotiation Ceiling',     value: `$${Number(activeSimulationScenario?.negotiation_ceiling_purchase_price || 0).toFixed(2)}`, color: 'var(--cyan)' },
+                  { label: 'Break-even Purchase',     value: `$${Number(activeSimulationScenario?.break_even_purchase_price || 0).toFixed(2)}`,          color: 'var(--cyan)' },
+                ].map(({ label, value, color }, i, arr) => (
+                  <div key={label} style={{ padding: '12px 16px', borderRight: i < arr.length - 1 ? '1px solid #192840' : 'none', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <span style={{ fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>{label}</span>
+                    <strong style={{ fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 700, color }}>{value}</strong>
+                  </div>
+                ))}
               </div>
 
               <div className="bom-category-row" style={{ marginTop: 8 }}>
@@ -3356,22 +3473,30 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     </div>
                   </div>
 
-                  <div className="agent-chart-grid" style={{ marginTop: 10 }}>
-                    <div className="intel-card">
-                      <h3>Ranked Metric View</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '300px 420px', gap: 10, marginTop: 12 }}>
+
+                    {/* Top-left: Ranked Metric View */}
+                    <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Ranked Metric View</div>
                       <RecommendationRankChart options={sortedRecommendationOptions} sortBy={recommendationSortBy} />
                     </div>
-                    <div className="intel-card">
-                      <h3>Profit vs Risk Tradeoff</h3>
+
+                    {/* Top-right: Profit vs Risk Tradeoff */}
+                    <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Profit vs Risk Tradeoff</div>
                       <RecommendationTradeoffChart options={sortedRecommendationOptions} />
                     </div>
-                  </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '1rem', marginTop: 12 }}>
-                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                      <div className="panel-head" style={{ paddingBottom: 0 }}>
-                        <h3>Recommendation Interaction Graph</h3>
-                        <p>{interactionGraph.configured ? 'Neo4j-backed graph available for relationship traversal.' : 'Fallback in-memory graph active. Configure Neo4j env to promote live graph edges.'}</p>
+                    {/* Bottom-left: Interaction Graph */}
+                    <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Recommendation Interaction Graph</div>
+                          <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>{interactionGraph.configured ? 'Neo4j-backed graph — live edges active.' : 'Fallback in-memory graph active.'}</div>
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: interactionGraph.connected ? 'var(--mint)' : 'var(--text-dim)', border: `1px solid ${interactionGraph.connected ? 'var(--mint)' : 'var(--border-hi)'}`, borderRadius: 999, padding: '3px 9px', flexShrink: 0 }}>
+                          {interactionGraph.connected ? 'Live' : 'Fallback'}
+                        </span>
                       </div>
                       <KnowledgeGraph2
                         graphNodes={recommendationGraphNodes}
@@ -3382,27 +3507,29 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       />
                     </div>
 
-                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                      <div className="panel-head" style={{ paddingBottom: 0 }}>
-                        <h3>Route Mode Mix + Decision Notes</h3>
-                        <p>Distribution of selected transport modes across ranked options.</p>
+                    {/* Bottom-right: Route Mode Mix */}
+                    <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                      <div>
+                        <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Route Mode Mix + Decision Notes</div>
+                        <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>Distribution of transport modes across ranked options.</div>
                       </div>
                       <RecommendationModeMixChart options={sortedRecommendationOptions} />
-                      <div className="ops-context-note" style={{ marginTop: 8 }}>
-                        Best current option: <strong>{activeRecommendation.vendorName}</strong> via <strong>{activeRecommendation.routeLabel}</strong>, targeting <strong>${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)}</strong> at <strong>{activeRecommendation.projectedMarginPct.toFixed(2)}%</strong> projected margin.
+                      <div style={{ background: '#030911', border: '1px solid #192840', borderLeft: '3px solid var(--cyan)', borderRadius: 8, padding: '8px 12px', fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+                        Best option: <strong style={{ color: 'var(--text)' }}>{activeRecommendation.vendorName}</strong> via <strong style={{ color: 'var(--cyan)' }}>{activeRecommendation.routeLabel}</strong> — targeting <strong style={{ color: 'var(--mint)' }}>${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)}</strong> at <strong style={{ color: 'var(--mint)' }}>{activeRecommendation.projectedMarginPct.toFixed(2)}%</strong> margin.
                       </div>
                       {recommendationNarrativeMode === 'ollama' && (
-                        <div className="ops-context-note" style={{ marginTop: 8 }}>
-                          Narrative runtime: {llmNarrativeDigest?.source ? String(llmNarrativeDigest.source).toUpperCase() : 'WAITING'}. This uses the narrative endpoint and can run on an Ollama-compatible backend via API base-url configuration.
+                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)', padding: '6px 0' }}>
+                          Narrative runtime: <strong style={{ color: 'var(--text-mid)' }}>{llmNarrativeDigest?.source ? String(llmNarrativeDigest.source).toUpperCase() : 'WAITING'}</strong>
                         </div>
                       )}
                     </div>
+
                   </div>
                 </>
               )}
 
-              <div className="scenario-next-wrap" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
-                <button className="flow-btn primary" onClick={() => navigateToSection('action-learning')}>
+              <div style={{ marginTop: 12 }}>
+                <button className="flow-btn primary" onClick={() => navigateToSection('action-learning')} style={{ width: '100%', justifyContent: 'center', padding: '13px 20px', fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 13 }}>
                   Continue to Action + Learning
                 </button>
               </div>
@@ -3779,75 +3906,70 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 <div><span>Decisions Logged</span><strong>{learningHistory.length}</strong></div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '1rem' }}>
-                <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                  <div className="panel-head" style={{ paddingBottom: 0 }}>
-                    <h3>Projected vs Actual Outcomes</h3>
-                    <p>Captures cost, margin, and profit drift after execution close-out.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '300px 460px', gap: 10 }}>
+
+                {/* Top-left: Projected vs Actual */}
+                <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Projected vs Actual Outcomes</div>
+                    <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>Cost, margin, and profit drift after execution close-out.</div>
                   </div>
                   <LearningDeltaBarChart feedback={executionLearningData.feedback} deltas={executionLearningData.calibration_deltas} />
-                  <div className="rationale-grid" style={{ marginTop: 6 }}>
-                    <div><span>Cost Delta</span><p>{executionLearningData.calibration_deltas?.cost_delta == null ? 'Pending' : `$${Math.round(executionLearningData.calibration_deltas.cost_delta).toLocaleString()}`}</p></div>
-                    <div><span>Margin Delta</span><p>{executionLearningData.calibration_deltas?.margin_delta_pct == null ? 'Pending' : `${executionLearningData.calibration_deltas.margin_delta_pct.toFixed(2)}%`}</p></div>
-                    <div><span>ETA Delta</span><p>{executionLearningData.calibration_deltas?.eta_delta_days == null ? 'Pending' : `${executionLearningData.calibration_deltas.eta_delta_days}d`}</p></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {[
+                      { label: 'Cost Delta',   value: executionLearningData.calibration_deltas?.cost_delta == null ? 'Pending' : `$${Math.round(executionLearningData.calibration_deltas.cost_delta).toLocaleString()}` },
+                      { label: 'Margin Delta', value: executionLearningData.calibration_deltas?.margin_delta_pct == null ? 'Pending' : `${executionLearningData.calibration_deltas.margin_delta_pct.toFixed(2)}%` },
+                      { label: 'ETA Delta',    value: executionLearningData.calibration_deltas?.eta_delta_days == null ? 'Pending' : `${executionLearningData.calibration_deltas.eta_delta_days}d` },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{ background: '#030911', border: '1px solid #192840', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>{label}</div>
+                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{value}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                  <div className="panel-head" style={{ paddingBottom: 0 }}>
-                    <h3>RL Model Update Surface</h3>
-                    <p>Reliability, commodity accuracy, simulation, and negotiation floor adjustments.</p>
+                {/* Top-right: RL Model */}
+                <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>RL Model Update Surface</div>
+                    <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>Reliability, commodity accuracy, simulation, and negotiation floor adjustments.</div>
                   </div>
                   <RLCalibrationRadarChart rlUpdates={executionLearningData.rl_updates} />
-                  <div className="ops-context-note" style={{ marginTop: 8 }}>
-                    Vendor reliability update: {executionLearningData.rl_updates?.vendor_reliability?.[0]?.vendor_name || '-'} {executionLearningData.rl_updates?.vendor_reliability?.[0]?.old_reliability ?? '-'} → {executionLearningData.rl_updates?.vendor_reliability?.[0]?.new_reliability ?? '-'}.
-                  </div>
-                  <div className="ops-context-note" style={{ marginTop: 4 }}>
-                    Negotiation floor adjustment: {executionLearningData.rl_updates?.negotiation_floor_adjustment_pct == null ? 'pending' : `${executionLearningData.rl_updates.negotiation_floor_adjustment_pct.toFixed(2)}%`}.
+                  <div style={{ background: '#030911', border: '1px solid #192840', borderLeft: '3px solid var(--violet)', borderRadius: 8, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-mid)' }}>
+                      Vendor reliability update: <strong style={{ color: 'var(--text)' }}>{executionLearningData.rl_updates?.vendor_reliability?.[0]?.vendor_name || '—'}</strong>{' '}
+                      <strong style={{ color: 'var(--amber)' }}>{executionLearningData.rl_updates?.vendor_reliability?.[0]?.old_reliability ?? '—'}</strong> → <strong style={{ color: 'var(--mint)' }}>{executionLearningData.rl_updates?.vendor_reliability?.[0]?.new_reliability ?? '—'}</strong>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--text-mid)' }}>
+                      Negotiation floor adjustment: <strong style={{ color: 'var(--cyan)' }}>{executionLearningData.rl_updates?.negotiation_floor_adjustment_pct == null ? 'Pending' : `${executionLearningData.rl_updates.negotiation_floor_adjustment_pct.toFixed(2)}%`}</strong>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 12 }}>
-                <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                  <div className="panel-head" style={{ paddingBottom: 0 }}>
-                    <h3>Personal Decision History</h3>
-                    <p>Track your own outcome accuracy and decision drift over time.</p>
+                {/* Bottom-left: Personal Decision History */}
+                <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Personal Decision History</div>
+                      <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>Outcome accuracy and decision drift over time.</div>
+                    </div>
+                    <select className="ghost-select" value={actionHistorySortBy} onChange={(event) => setActionHistorySortBy(event.target.value)} style={{ fontSize: 11, minWidth: 0 }}>
+                      <option value="recent">Most Recent</option>
+                      <option value="accuracy">Accuracy</option>
+                      <option value="margin-delta">Margin Delta</option>
+                      <option value="cost-delta">Cost Delta</option>
+                    </select>
                   </div>
-
-                  <div className="vendor-filter-row" style={{ marginBottom: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#7aaccc', fontSize: '0.75rem' }}>
-                      Sort history by:
-                      <select className="ghost-select" value={actionHistorySortBy} onChange={(event) => setActionHistorySortBy(event.target.value)}>
-                        <option value="recent">Most Recent</option>
-                        <option value="accuracy">Accuracy</option>
-                        <option value="margin-delta">Margin Delta</option>
-                        <option value="cost-delta">Cost Delta</option>
-                      </select>
-                    </label>
-                  </div>
-
                   <DecisionAccuracyTrendChart decisions={sortedLearningHistory} />
-
-                  <div className="scenario-compare-wrap" style={{ marginTop: 8 }}>
+                  <div className="scenario-compare-wrap">
                     <table className="scenario-compare-table">
                       <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Vendor</th>
-                          <th>Route</th>
-                          <th>Proj Margin</th>
-                          <th>Actual Margin</th>
-                          <th>Accuracy</th>
-                        </tr>
+                        <tr><th>Date</th><th>Vendor</th><th>Route</th><th>Proj Margin</th><th>Actual Margin</th><th>Accuracy</th></tr>
                       </thead>
                       <tbody>
                         {sortedLearningHistory.map((row) => (
-                          <tr
-                            key={row.decision_id}
-                            onClick={() => setSelectedLearningDecisionId(row.decision_id)}
-                            style={{ cursor: 'pointer', background: selectedLearningDecision?.decision_id === row.decision_id ? 'rgba(0,191,255,0.08)' : 'transparent' }}
-                          >
+                          <tr key={row.decision_id} onClick={() => setSelectedLearningDecisionId(row.decision_id)} style={{ cursor: 'pointer', background: selectedLearningDecision?.decision_id === row.decision_id ? 'rgba(0,191,255,0.08)' : 'transparent' }}>
                             <td>{String(row.decision_date || '').slice(0, 10)}</td>
                             <td>{row.vendor_name || '-'}</td>
                             <td>{row.route_id || '-'}</td>
@@ -3861,12 +3983,12 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                   </div>
                 </div>
 
-                <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
-                  <div className="panel-head" style={{ paddingBottom: 0 }}>
-                    <h3>Confidence Provenance (Neo4j/Fallback)</h3>
-                    <p>{executionLearningData.next_event_guidance?.explanation || 'Confidence explanation appears after learning data is available.'}</p>
+                {/* Bottom-right: Confidence Provenance */}
+                <div style={{ background: '#06091a', border: '1px solid #1a2d4f', borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>Confidence Provenance (Neo4j/Fallback)</div>
+                    <div style={{ fontSize: 11, fontFamily: 'var(--font-sans)', color: 'var(--text-mid)', marginTop: 3 }}>{executionLearningData.next_event_guidance?.explanation || 'Confidence explanation appears after learning data is available.'}</div>
                   </div>
-
                   <KnowledgeGraph2
                     graphNodes={module6GraphNodes}
                     graphEdges={module6GraphEdges}
@@ -3874,13 +3996,20 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     activatedNodeIds={activatedNodeIds}
                     onEdgeSelect={setSelectedEdgeId}
                   />
-
-                  <div className="rationale-grid" style={{ marginTop: 8 }}>
-                    <div><span>Influence Count</span><p>{(executionLearningData.next_event_guidance?.informed_by || []).length}</p></div>
-                    <div><span>Selected Decision</span><p>{selectedLearningDecision ? `${selectedLearningDecision.vendor_name} via ${selectedLearningDecision.route_id}` : '-'}</p></div>
-                    <div><span>Status</span><p>{executionLearningData.feedback?.calibration_status || '-'}</p></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {[
+                      { label: 'Influence Count',    value: (executionLearningData.next_event_guidance?.informed_by || []).length },
+                      { label: 'Selected Decision',  value: selectedLearningDecision ? `${selectedLearningDecision.vendor_name}` : '—' },
+                      { label: 'Status',             value: executionLearningData.feedback?.calibration_status || '—' },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{ background: '#030911', border: '1px solid #192840', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 9, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 4 }}>{label}</div>
+                        <div style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{value}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
+
               </div>
 
               <div className="ops-context-note" style={{ marginTop: 10 }}>{executionLearningData.summary}</div>

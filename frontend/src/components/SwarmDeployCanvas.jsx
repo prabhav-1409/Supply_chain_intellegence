@@ -225,7 +225,7 @@ function toRFNodes(nodes, positions, revealedIds) {
         borderRadius: s.radius,
         padding: '8px 12px',
         fontSize: '9.5px',
-        fontFamily: '"SF Mono", "Fira Mono", monospace',
+        fontFamily: 'var(--font-sans)',
         fontWeight: '600',
         boxShadow: visible ? `0 0 14px 4px ${s.glow}` : 'none',
         minWidth: '64px',
@@ -301,9 +301,9 @@ function CausalChainFlow({ chain, eventId }) {
                 cursor: 'default',
               }}
             >
-              <div style={{ color: n.color, fontSize: '0.65rem', fontFamily: 'SF Mono, monospace', marginBottom: 3, opacity: 0.8 }}>{n.stage}</div>
+              <div style={{ color: n.color, fontSize: '0.65rem', fontFamily: 'var(--font-sans)', marginBottom: 3, opacity: 0.8 }}>{n.stage}</div>
               <div style={{ color: '#dbe9ff', fontSize: '0.72rem', fontWeight: 600, lineHeight: 1.3 }}>{n.name}</div>
-              <div style={{ color: n.color, fontSize: '0.62rem', marginTop: 5, fontFamily: 'SF Mono, monospace' }}>{n.confidence ?? '--'}% conf</div>
+              <div style={{ color: n.color, fontSize: '0.62rem', marginTop: 5, fontFamily: 'var(--font-sans)' }}>{n.confidence ?? '--'}% conf</div>
             </motion.div>
             {i < items.length - 1 && (
               <motion.div
@@ -409,7 +409,7 @@ function AgentsPanel({ progress, runStatus }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: agent.color, boxShadow: running ? `0 0 8px 2px ${agent.color}` : 'none', flexShrink: 0 }} />
-                <span style={{ color: '#b8d4e8', fontSize: '0.72rem', fontWeight: 600, fontFamily: 'SF Mono, monospace' }}>{agent.name}</span>
+                <span style={{ color: '#b8d4e8', fontSize: '0.72rem', fontWeight: 600, fontFamily: 'var(--font-sans)' }}>{agent.name}</span>
               </div>
               <span className={`swarm-status-badge ${done ? 'done' : running ? 'running' : 'idle'}`}>
                 {done ? 'DONE' : running ? 'RUNNING' : 'IDLE'}
@@ -423,13 +423,13 @@ function AgentsPanel({ progress, runStatus }) {
               />
             </div>
             {(running || done) && (
-              <div style={{ color: '#4a7a90', fontSize: '0.62rem', marginTop: 3, fontFamily: 'SF Mono, monospace' }}>{agent.role}</div>
+              <div style={{ color: '#4a7a90', fontSize: '0.62rem', marginTop: 3, fontFamily: 'var(--font-sans)' }}>{agent.role}</div>
             )}
           </div>
         )
       })}
       {runStatus && (
-        <div style={{ marginTop: 8, padding: '6px 8px', background: 'rgba(0,191,255,0.05)', borderRadius: 6, fontSize: '0.65rem', color: '#4a7a90', fontFamily: 'SF Mono, monospace' }}>
+        <div style={{ marginTop: 8, padding: '6px 8px', background: 'rgba(0,191,255,0.05)', borderRadius: 6, fontSize: '0.65rem', color: '#4a7a90', fontFamily: 'var(--font-sans)' }}>
           Run: {runStatus.status?.toUpperCase()} · {runStatus.progress ?? 0}%
         </div>
       )}
@@ -447,14 +447,14 @@ function ActivityLog({ entries }) {
   return (
     <div className="swarm-activity-log" ref={logRef}>
       <div className="swarm-panel-title">Activity Log</div>
-      {entries.length === 0 && <div style={{ color: '#2a4a6a', fontSize: '0.65rem', fontFamily: 'SF Mono, monospace', padding: '4px 0' }}>Awaiting agent output…</div>}
+      {entries.length === 0 && <div style={{ color: '#2a4a6a', fontSize: '0.65rem', fontFamily: 'var(--font-sans)', padding: '4px 0' }}>Awaiting agent output…</div>}
       {entries.map((e, i) => {
         const agent = SWARM_AGENTS.find(a => a.id === e.agentId)
         return (
           <div key={i} style={{ marginBottom: 4, lineHeight: 1.4 }}>
-            <span style={{ color: '#2a4a6a', fontSize: '0.6rem', fontFamily: 'SF Mono, monospace' }}>{e.ts} </span>
-            <span style={{ color: agent?.color || '#00bfff', fontSize: '0.62rem', fontFamily: 'SF Mono, monospace', fontWeight: 700 }}>[{agent?.name || e.agentId}] </span>
-            <span style={{ color: '#7aaccc', fontSize: '0.65rem', fontFamily: 'SF Mono, monospace' }}>{e.msg}</span>
+            <span style={{ color: '#2a4a6a', fontSize: '0.6rem', fontFamily: 'var(--font-sans)' }}>{e.ts} </span>
+            <span style={{ color: agent?.color || '#00bfff', fontSize: '0.62rem', fontFamily: 'var(--font-sans)', fontWeight: 700 }}>[{agent?.name || e.agentId}] </span>
+            <span style={{ color: '#7aaccc', fontSize: '0.65rem', fontFamily: 'var(--font-sans)' }}>{e.msg}</span>
           </div>
         )
       })}
@@ -681,7 +681,7 @@ export default function SwarmDeployCanvas({
             {phase === 'deploying' && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(3,10,20,0.85)', gap: 12 }}>
                 <div className="swarm-deploy-spinner" />
-                <div style={{ color: '#00bfff', fontSize: '0.8rem', fontFamily: 'SF Mono, monospace' }}>Initializing AI Swarm…</div>
+                <div style={{ color: '#00bfff', fontSize: '0.8rem', fontFamily: 'var(--font-sans)' }}>Initializing AI Swarm…</div>
               </div>
             )}
           </div>
