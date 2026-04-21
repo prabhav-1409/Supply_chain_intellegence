@@ -52,6 +52,8 @@ export default function ResultsDashboardPage() {
   }, [activeSection])
 
   useEffect(() => {
+    // Keep user on Module 2 after deployment completion; advance is manual only.
+    // This prevents unexpected jumps to simulation-lab while the graph is animating.
     if (activeSection !== 'disruption-impact' || !runInfo.runId) return
     let cancelled = false
     const lockKey = runInfo.runId
@@ -66,7 +68,6 @@ export default function ResultsDashboardPage() {
         const completed = status?.status === 'completed' || status?.stage === 'artifacts' || progress >= 100
         if (completed && autoAdvanceLockRef.current !== lockKey) {
           autoAdvanceLockRef.current = lockKey
-          goToSection('simulation-lab')
         }
       } catch {}
     }

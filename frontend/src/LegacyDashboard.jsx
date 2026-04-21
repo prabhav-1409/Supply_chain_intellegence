@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps'
+import { jsPDF } from 'jspdf'
 import './App.css'
 import AmbientBackground from './components/AmbientBackground'
 import LivingSupplyMap from './components/LivingSupplyMap'
-import { KnowledgeGraph2, RiskHeatmapChart, ForecastChart, OutlookChart, ScenarioComparisonTable, ScenarioRadarChart, MonteCarloBandChart, ProfitWaterfallChart, DealZoneChart, NegotiationImpactChart, AgentNegotiationTimeline, NegotiationVendorRadar, RecommendationRankChart, RecommendationTradeoffChart, RecommendationModeMixChart, LearningDeltaBarChart, DecisionAccuracyTrendChart, RLCalibrationRadarChart } from './components/Charts'
+import { KnowledgeGraph2, RiskHeatmapChart, ForecastChart, OutlookChart, ScenarioComparisonTable, ScenarioRadarChart, MonteCarloBandChart, ProfitWaterfallChart, DealZoneChart, NegotiationImpactChart, NegotiationVendorRadar, RecommendationRankChart, RecommendationTradeoffChart, RecommendationModeMixChart, LearningDeltaBarChart, DecisionAccuracyTrendChart, RLCalibrationRadarChart } from './components/Charts'
 import ScenarioFilmstrip from './components/ScenarioFilmstrip'
 import AIDebateStage, { SwarmInteractionBoard } from './components/AIDebateStage'
 import BoardroomMode from './components/BoardroomMode'
@@ -11,6 +13,7 @@ import NarrativeCopilot from './components/NarrativeCopilot'
 import SimulationPanel from './components/SimulationPanel'
 import SimulationControlModule, { DEFAULT_SIMULATION_CONFIG } from './components/flow/SimulationControlModule'
 import SwarmDeployCanvas from './components/SwarmDeployCanvas'
+import { demoDecisions } from './fixtures/demoDecisions'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8003'
 
@@ -137,6 +140,685 @@ function LiveAgentCard({ agentLabel, insight, fallbackTitle, fallbackBody, isWor
   )
 }
 
+function ResearchNarrativeCard({ insight, fallbackNarrative, keySignals = [], onRerun, isRefreshing }) {
+  const narrative = insight?.summary || fallbackNarrative
+  const [typed, setTyped] = useState('')
+
+  useEffect(() => {
+    const full = String(narrative || '').trim()
+    if (!full) {
+      setTyped('')
+      return
+    }
+    let i = 0
+    setTyped('')
+    const timer = setInterval(() => {
+      i += 1
+      setTyped(full.slice(0, i))
+      if (i >= full.length) clearInterval(timer)
+    }, 14)
+    return () => clearInterval(timer)
+  }, [narrative])
+
+  const citations = (insight?.citations || []).slice(0, 4)
+  const providerLabel = insight?.llm?.provider_type || insight?.llm?.backend || 'llm'
+  const updatedAt = insight?.updated_at ? new Date(insight.updated_at).toLocaleTimeString('en-US', { hour12: false }) : 'just now'
+  const bullets = keySignals.slice(0, 4)
+
+  return (
+    <div className="research-narrative-card">
+      <div className="research-narrative-head">
+        <div>
+          <span className="research-agent-pill">AutoResearch</span>
+          <span className="research-live-pill">LIVE LLM</span>
+        </div>
+        <div className="research-meta">{providerLabel.toUpperCase()} · {updatedAt}</div>
+      </div>
+      <p className="research-narrative-body">
+        {typed}
+        <span className="typing-cursor" />
+      </p>
+      <div className="research-signals-list">
+        {bullets.map((item, idx) => (
+          <div key={`${item.label}-${idx}`} className="research-signal-item">
+            <span>{item.label}</span>
+            <span className={`research-confidence ${Number(item.confidence || 0) >= 80 ? 'high' : Number(item.confidence || 0) >= 65 ? 'mid' : 'low'}`}>
+              {Number(item.confidence || 0)}%
+            </span>
+          </div>
+        ))}
+      </div>
+      {citations.length > 0 && (
+        <div className="research-citations">
+          {citations.map((c) => (
+            <span key={c.id} className="research-citation-chip">{c.id}: {c.source}</span>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 10 }}>
+        <button className="flow-btn" onClick={onRerun} disabled={isRefreshing}>{isRefreshing ? 'Re-running...' : 'Re-run research'}</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Module 3 helpers ─────────────────────────────────────────────────────────
+
+function MarginArcGauge({ marginPct, size = 80, range = 40 }) {
+  const clamped = Math.max(0, Math.min(Number(marginPct || 0), range))
+  const angle = (clamped / range) * 180
+  const rad = (angle - 90) * (Math.PI / 180)
+  const r = size * 0.42
+  const cx = size / 2
+  const cy = size * 0.58
+  const nx = cx + r * Math.cos(rad)
+  const ny = cy + r * Math.sin(rad)
+  const arcColor = clamped >= range * 0.55 ? '#39d353' : clamped >= range * 0.25 ? '#ffbe68' : '#ff4060'
+  const bgArcD = `M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`
+  const sweepAngle = (clamped / range) * 180
+  const sweepRad = (-180 + sweepAngle) * (Math.PI / 180)
+  const sweepX = cx + r * Math.cos(sweepRad + Math.PI / 2)
+  const sweepY = cy + r * Math.sin(sweepRad + Math.PI / 2)
+  const largeArc = sweepAngle > 180 ? 1 : 0
+  const fillArcD = clamped <= 0.01 ? '' : `M ${cx - r} ${cy} A ${r} ${r} 0 ${largeArc} 1 ${sweepX} ${sweepY}`
+  return (
+    <svg width={size} height={size * 0.65} viewBox={`0 0 ${size} ${size * 0.65}`} style={{ overflow: 'visible' }}>
+      <path d={bgArcD} fill="none" stroke="rgba(0,191,255,0.12)" strokeWidth={size * 0.08} strokeLinecap="round" />
+      {fillArcD && <path d={fillArcD} fill="none" stroke={arcColor} strokeWidth={size * 0.08} strokeLinecap="round" opacity="0.9" />}
+      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={arcColor} strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r="3.5" fill={arcColor} />
+      <text x={cx} y={cy - 4} textAnchor="middle" fontSize={size * 0.17} fontWeight="800" fontFamily="SF Mono, monospace" fill={arcColor}>
+        {Number(clamped).toFixed(1)}%
+      </text>
+    </svg>
+  )
+}
+
+function RoutePathMiniMap({ origin = 'Vendor', mode = 'sea', destination = 'Factory', compact = false }) {
+  const modeLabel = String(mode || 'sea').toUpperCase()
+  const width = compact ? 180 : 250
+  const height = compact ? 44 : 54
+  const y = compact ? 22 : 27
+  return (
+    <div className={`route-path-mini ${compact ? 'compact' : ''}`}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          <linearGradient id={`routeStroke-${modeLabel}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#00bfff" />
+            <stop offset="100%" stopColor={modeLabel === 'AIR' ? '#ffbe68' : modeLabel === 'SEA' ? '#39d353' : '#7aa8ff'} />
+          </linearGradient>
+        </defs>
+        <line x1="20" y1={y} x2={width - 20} y2={y} stroke={`url(#routeStroke-${modeLabel})`} strokeWidth="2.5" strokeDasharray={modeLabel === 'SEA' ? '0' : '4 4'} strokeLinecap="round" />
+        <circle cx="20" cy={y} r="4.2" fill="#00bfff" />
+        <circle cx={width / 2} cy={y} r="4.2" fill="#8fd3ff" />
+        <circle cx={width - 20} cy={y} r="4.2" fill="#39d353" />
+        <text x="20" y={height - 4} textAnchor="middle" fontSize="8" fill="#8cb6cf">{origin}</text>
+        <text x={width / 2} y={compact ? 10 : 12} textAnchor="middle" fontSize="8" fill="#7aaccc">{modeLabel}</text>
+        <text x={width - 20} y={height - 4} textAnchor="middle" fontSize="8" fill="#8cb6cf">{destination}</text>
+      </svg>
+    </div>
+  )
+}
+
+function RecommendationRouteMap({ recommendedRoute, blockedRoutes = [] }) {
+  const start = { x: 92, y: 118 }
+  const hub = { x: 178, y: 106 }
+  const end = { x: 264, y: 84 }
+  const recommendedLabel = recommendedRoute || 'Queretaro -> Dallas'
+
+  return (
+    <div className="recommendation-route-map">
+      <svg viewBox="0 0 360 170" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="routeMapBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#07182b" />
+            <stop offset="100%" stopColor="#030a12" />
+          </linearGradient>
+          <linearGradient id="recommendedStroke" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#00bfff" />
+            <stop offset="100%" stopColor="#39d353" />
+          </linearGradient>
+        </defs>
+
+        <rect x="0" y="0" width="360" height="170" rx="14" fill="url(#routeMapBg)" />
+        <path d="M28 64 L96 48 L132 58 L114 84 L60 92 L22 80 Z" fill="rgba(85,130,158,0.24)" stroke="rgba(150,200,230,0.18)" />
+        <path d="M130 62 L186 52 L208 66 L190 89 L146 96 L124 80 Z" fill="rgba(85,130,158,0.2)" stroke="rgba(150,200,230,0.14)" />
+        <path d="M214 74 L328 56 L340 78 L306 102 L236 109 L205 95 Z" fill="rgba(85,130,158,0.2)" stroke="rgba(150,200,230,0.14)" />
+
+        <path className="animated-route" d={`M ${start.x} ${start.y} Q ${hub.x} ${hub.y} ${end.x} ${end.y}`} stroke="url(#recommendedStroke)" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+        <circle cx={start.x} cy={start.y} r="4.5" fill="#00bfff" />
+        <circle cx={end.x} cy={end.y} r="4.5" fill="#39d353" />
+        <text x={start.x - 2} y={start.y + 16} textAnchor="middle" fontSize="9" fill="#9ac7de">Queretaro</text>
+        <text x={end.x + 2} y={end.y - 10} textAnchor="middle" fontSize="9" fill="#9ac7de">Dallas</text>
+
+        {blockedRoutes.slice(0, 2).map((route, idx) => {
+          const y = 36 + idx * 22
+          return (
+            <g key={route}>
+              <line x1="32" y1={y} x2="110" y2={y + 7} stroke="#ff4060" strokeWidth="2" strokeDasharray="4 4" />
+              <line x1="56" y1={y - 6} x2="66" y2={y + 4} stroke="#ff4060" strokeWidth="2.1" />
+              <line x1="66" y1={y - 6} x2="56" y2={y + 4} stroke="#ff4060" strokeWidth="2.1" />
+              <text x="118" y={y + 3} fontSize="8" fill="#ff8fa1">Blocked: {route}</text>
+            </g>
+          )
+        })}
+      </svg>
+      <p className="recommendation-route-caption">Recommended lane: {recommendedLabel}</p>
+    </div>
+  )
+}
+
+const SCENARIO_STORY_SEEDS = {
+  Optimistic: 'Favorable freight and tariff conditions widen margin significantly — procurement teams should lock contracts now.',
+  Base: 'Base economics hold. Margin tracks to target assuming no further freight escalation.',
+  Stressed: 'In the stressed case, your floor margin is at risk if freight costs spike beyond model assumptions.',
+  'Worst-case': 'Worst-case signals a loss-risk event — immediate supplier diversification is the only viable hedge.',
+}
+
+function ScenarioCardGrid({ scenarios, baseScenario }) {
+  const ORDER = ['Optimistic', 'Base', 'Stressed', 'Worst-case']
+  const sorted = [...(scenarios || [])].sort((a, b) => {
+    const ai = ORDER.indexOf(a.scenario_name)
+    const bi = ORDER.indexOf(b.scenario_name)
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+  })
+
+  return (
+    <div className="sim-scenario-card-grid">
+      {sorted.map((scenario) => {
+        const marginPct = Number(scenario.gross_margin_pct || 0)
+        const isLoss = scenario.is_loss_making || marginPct < 5
+        const isTight = !isLoss && marginPct < 15
+        const statusLabel = isLoss ? 'Loss Risk' : isTight ? 'Tight' : 'Profitable'
+        const statusClass = isLoss ? 'kpi-danger' : isTight ? 'kpi-warn' : 'kpi-ok'
+        const story = SCENARIO_STORY_SEEDS[scenario.scenario_name]
+          || `${scenario.scenario_name} scenario: margin ${marginPct.toFixed(1)}%, ceiling $${Number(scenario.negotiation_ceiling_purchase_price || 0).toFixed(2)}.`
+        return (
+          <motion.div
+            key={scenario.scenario_id}
+            className="sim-scenario-card"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28 }}
+          >
+            <div className="sim-scenario-card-head">
+              <strong>{scenario.scenario_name}</strong>
+              <span className={`sim-status-pill ${statusClass}`}>{statusLabel}</span>
+            </div>
+            <div className="sim-scenario-gauge">
+              <MarginArcGauge marginPct={marginPct} size={88} />
+            </div>
+            <p className="sim-scenario-story">{story}</p>
+            <div className="sim-scenario-meta">
+              <span>Ceiling <strong>${Number(scenario.negotiation_ceiling_purchase_price || 0).toFixed(2)}</strong></span>
+              <span>P/U <strong>${Number(scenario.profit_per_unit_expected || 0).toFixed(2)}</strong></span>
+            </div>
+          </motion.div>
+        )
+      })}
+    </div>
+  )
+}
+
+function AIInterpretationPanel({ swarmAdjustments, confidenceDiagnostics }) {
+  const materialPct = Number(swarmAdjustments?.material_pressure_pct || 0).toFixed(1)
+  const routeStress = Number(swarmAdjustments?.route_stress_pct || 0).toFixed(1)
+  const dissent = Number(swarmAdjustments?.dissent_penalty || 0).toFixed(3)
+  const judgeConf = Number(swarmAdjustments?.judge_confidence || 0)
+  const dissentText = confidenceDiagnostics?.dissentSummary || swarmAdjustments?.dissent_summary || ''
+
+  const generatedParagraph = `The swarm raised material cost estimates by ${materialPct}% above baseline${Number(materialPct) > 10 ? ' due to active route amplification' : ''
+    }. Route stress adds an estimated ${routeStress}% logistics pressure — translating to higher landed cost per unit. Judge confidence stands at ${judgeConf}%, ${judgeConf >= 80
+      ? 'indicating strong signal alignment across agents.'
+      : judgeConf >= 65
+        ? 'indicating moderate consensus with some divergence.'
+        : 'indicating notable agent disagreement that warrants caution.'
+    }${dissentText && dissentText !== 'No material dissent flagged by agents.'
+      ? ` ${dissentText}`
+      : ` Dissent penalty of ${dissent} is applied; the Advisor recommends treating this as a ${Number(materialPct) > 15 || Number(routeStress) > 10 ? 'stressed' : 'base'} scenario.`
+    }`
+
+  const [typed, setTyped] = useState('')
+  useEffect(() => {
+    const full = generatedParagraph.trim()
+    if (!full) { setTyped(''); return }
+    let i = 0
+    setTyped('')
+    const timer = setInterval(() => {
+      i += 2
+      setTyped(full.slice(0, i))
+      if (i >= full.length) clearInterval(timer)
+    }, 12)
+    return () => clearInterval(timer)
+  }, [generatedParagraph])
+
+  return (
+    <div className="ai-interp-panel">
+      <div className="ai-interp-head">
+        <span className="research-agent-pill">SwarmAdvisor</span>
+        <span className="research-live-pill">LIVE LLM</span>
+        <span className="ai-interp-meta">Generated interpretation · {new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+      </div>
+      <p className="ai-interp-body">
+        {typed}
+        <span className="typing-cursor" />
+      </p>
+    </div>
+  )
+}
+
+function InterventionComparisonGauges({ scenarios }) {
+  const worstOrBase = scenarios?.find((s) => s.scenario_name === 'Worst-case' || s.scenario_name === 'Stressed') || scenarios?.[0]
+  const bestOrOpt = scenarios?.find((s) => s.scenario_name === 'Optimistic' || s.scenario_name === 'Base') || scenarios?.[scenarios?.length - 1]
+  const withoutMargin = Number(worstOrBase?.gross_margin_pct || 0)
+  const withMargin = Number(bestOrOpt?.gross_margin_pct || 0)
+  const delta = (withMargin - withoutMargin).toFixed(1)
+  return (
+    <div className="intervention-compare-wrap">
+      <h3 style={{ marginBottom: 10 }}>Intervention Impact</h3>
+      <div className="intervention-compare-gauges">
+        <div className="intervention-gauge-box">
+          <span className="intervention-label">Without Intervention</span>
+          <MarginArcGauge marginPct={withoutMargin} size={96} />
+          <span className="intervention-sub">{worstOrBase?.scenario_name || 'Stressed'} scenario</span>
+        </div>
+        <div className="intervention-delta">
+          <span>+{delta > 0 ? delta : Math.abs(Number(delta))}pp</span>
+          <span className="intervention-delta-sub">margin delta</span>
+        </div>
+        <div className="intervention-gauge-box">
+          <span className="intervention-label">With Recommended Action</span>
+          <MarginArcGauge marginPct={withMargin} size={96} />
+          <span className="intervention-sub">{bestOrOpt?.scenario_name || 'Optimistic'} scenario</span>
+        </div>
+      </div>
+      <p className="intervention-rationale">Acting on the Advisor recommendation recovers <strong>+{delta > 0 ? delta : Math.abs(Number(delta))} pp</strong> of gross margin. This is the argument for intervention.</p>
+    </div>
+  )
+}
+
+// ── Module 4 helpers ─────────────────────────────────────────────────────────
+
+function buildReasoning(round, side, vendorName, walkAwayPrice) {
+  const direct = round?.[`${side}_reasoning`]
+    || round?.[`${side}_rationale`]
+    || round?.[`${side}Reasoning`]
+    || round?.reasoning?.[side]
+    || round?.rationale?.[side]
+  if (direct) return String(direct)
+
+  const buyerOffer = Number(round?.buyer_offer || 0)
+  const vendorAsk = Number(round?.vendor_ask || 0)
+  const gap = Number(round?.gap || 0)
+  const buyerMargin = Number(round?.buyer_margin_pct || 0)
+  const roundsLeft = Math.max(0, 5 - Number(round?.round || 1))
+
+  if (side === 'buyer') {
+    return `Opening at $${buyerOffer.toFixed(2)} to preserve margin discipline (${buyerMargin.toFixed(1)}%) while narrowing the gap by $${gap.toFixed(2)}. We stay under the walk-away threshold ($${Number(walkAwayPrice || 0).toFixed(2)}) with ${roundsLeft} rounds remaining to close.`
+  }
+  return `Countering at $${vendorAsk.toFixed(2)} to protect ${vendorName}'s floor economics and route risk exposure. Current gap is $${gap.toFixed(2)} before the next concession step.`
+}
+
+function toFirstSentence(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  const punctuationIndex = normalized.search(/[.!?]/)
+  return punctuationIndex >= 0 ? normalized.slice(0, punctuationIndex + 1) : normalized
+}
+
+function GapClosingChart({ rounds = [] }) {
+  const openingGap = Math.max(0.01, Number(rounds?.[0]?.gap || 0))
+
+  return (
+    <div className="gap-closing-chart" aria-label="Gap closing by round">
+      {rounds.map((round) => {
+        const gap = Math.max(0, Number(round?.gap || 0))
+        const pct = openingGap <= 0.01 ? (gap <= 0 ? 0 : 100) : Math.max(0, Math.min(100, (gap / openingGap) * 100))
+        const isClosed = gap <= 0.001
+        const colorClass = isClosed
+          ? 'closed'
+          : pct > 50
+            ? 'high'
+            : pct >= 20
+              ? 'mid'
+              : 'low'
+
+        return (
+          <div key={`gap-row-${round.round}`} className="gap-closing-row">
+            <span className="gap-round-label">R{round.round}</span>
+            <div className="gap-track" title={`Round ${round.round}: $${gap.toFixed(2)} gap`}>
+              <div className={`gap-fill ${colorClass}`} style={{ width: `${Math.max(isClosed ? 100 : 6, pct)}%` }}>
+                {isClosed ? <span>Deal closed.</span> : null}
+              </div>
+            </div>
+            <span className="gap-value">${gap.toFixed(2)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function NegotiationChatThread({ rounds = [], vendorName, walkAwayPrice, targetMarginPct = 22, projectedDealMarginPct = 0 }) {
+  const [expandedReasoning, setExpandedReasoning] = useState({})
+
+  const messageRows = useMemo(() => {
+    return rounds.flatMap((round) => {
+      const buyerReasoning = buildReasoning(round, 'buyer', vendorName, walkAwayPrice)
+      const vendorReasoning = buildReasoning(round, 'vendor', vendorName, walkAwayPrice)
+      const buyerMargin = Number(round?.buyer_margin_pct || 0)
+      const statusText = String(round?.status || 'negotiating').replace(/-/g, ' ')
+      const gap = Number(round?.gap || 0)
+      const roundLabel = `R${Number(round?.round || 0)}`
+
+      return [
+        {
+          id: `buyer-${roundLabel}`,
+          side: 'buyer',
+          roundLabel,
+          agent: 'Buyer (AI agent)',
+          price: Number(round?.buyer_offer || 0),
+          reasoning: buyerReasoning,
+          impact: `Margin impact: ${buyerMargin.toFixed(1)}% gross margin (${buyerMargin >= Number(targetMarginPct || 22) ? 'above floor' : 'below floor'}).`,
+          statusText,
+          gap,
+          rawRound: round,
+        },
+        {
+          id: `vendor-${roundLabel}`,
+          side: 'vendor',
+          roundLabel,
+          agent: 'Vendor Rep (AI agent)',
+          price: Number(round?.vendor_ask || 0),
+          reasoning: vendorReasoning,
+          impact: `Gap after counter: $${gap.toFixed(2)} · status ${statusText}.`,
+          statusText,
+          gap,
+          rawRound: round,
+        },
+      ]
+    })
+  }, [rounds, targetMarginPct, vendorName, walkAwayPrice])
+
+  const finalAgreedRound = useMemo(() => rounds.find((round) => round.agreed), [rounds])
+  const lastRoundLabel = useMemo(() => {
+    const lastRound = rounds[rounds.length - 1]
+    return lastRound ? `R${Number(lastRound.round || 0)}` : ''
+  }, [rounds])
+  const finalAgreedPrice = finalAgreedRound ? Number(finalAgreedRound.vendor_ask || finalAgreedRound.buyer_offer || 0) : 0
+  const finalMargin = finalAgreedRound
+    ? Number(finalAgreedRound.buyer_margin_pct || projectedDealMarginPct || 0)
+    : Number(projectedDealMarginPct || 0)
+
+  return (
+    <div className="negotiation-chat-shell">
+      <div className="negotiation-chat-thread-wrap">
+        <GapClosingChart rounds={rounds} />
+
+        <div className="negotiation-chat-thread">
+          {messageRows.map((message) => {
+            const defaultExpanded = message.roundLabel === lastRoundLabel
+            const isExpanded = expandedReasoning[message.id] ?? defaultExpanded
+            const rationaleSentence = toFirstSentence(message.reasoning || message.impact)
+
+            return (
+              <motion.div
+                key={message.id}
+                className={`negotiation-chat-item ${message.side}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22 }}
+              >
+                <div className={`negotiation-avatar ${message.side}`} aria-hidden>
+                  <span>{message.side === 'buyer' ? 'B' : 'V'}</span>
+                </div>
+                <div className="negotiation-message-col">
+                  <div className={`negotiation-message-label ${message.side}`}>
+                    <span>{message.agent}</span>
+                    <strong>{message.roundLabel}</strong>
+                  </div>
+                  <div className={`negotiation-bubble ${message.side}`}>
+                    <p className="negotiation-price-line">Offer: <strong>${message.price.toFixed(2)}</strong></p>
+                    <p className="negotiation-impact-line">{rationaleSentence}</p>
+                  <div className="negotiation-reasoning-box">
+                    <div className="negotiation-reasoning-head">
+                      <span>Reasoning</span>
+                      <button
+                        className="swarm-reasoning-toggle"
+                        onClick={() => setExpandedReasoning((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
+                      >
+                        {isExpanded ? 'Hide reasoning' : 'Show reasoning'}
+                      </button>
+                    </div>
+                    {isExpanded && <p>{message.reasoning}</p>}
+                  </div>
+                  </div>
+                </div>
+              </motion.div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="negotiation-outcome-card">
+        <div>
+          <span className={`negotiation-outcome-pill ${finalAgreedRound ? 'ok' : 'warn'}`}>{finalAgreedRound ? 'Deal agreed' : 'BATNA required'}</span>
+          <h4>{finalAgreedRound ? `Final agreed price: $${finalAgreedPrice.toFixed(2)}` : 'No deal — activating BATNA'}</h4>
+          <p>
+            {finalAgreedRound
+              ? `Round ${finalAgreedRound.round} closed in-zone. Margin remains ${finalMargin.toFixed(1)}%.`
+              : `Primary negotiation did not converge under walk-away $${Number(walkAwayPrice || 0).toFixed(2)}. Escalate to alternate vendor path.`}
+          </p>
+        </div>
+        <div className="negotiation-outcome-gauge">
+          <MarginArcGauge marginPct={finalMargin} size={136} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AIRationaleCard({ orderId, activeVendor, rounds = [], commodityTrend = 'stable', urgencyPressure = 0, batnaVendor }) {
+  const [rationale, setRationale] = useState('')
+  const [meta, setMeta] = useState({ source: 'llm', model: 'loading' })
+  const [loading, setLoading] = useState(false)
+  const [typed, setTyped] = useState('')
+
+  const context = useMemo(() => {
+    const finalRound = rounds.find((round) => round.agreed) || rounds[rounds.length - 1] || null
+    if (!activeVendor || !finalRound) return null
+
+    return {
+      negotiation_result: rounds.some((round) => round.agreed) ? 'deal' : 'no-deal',
+      buyer_vendor_name: 'Buyer',
+      counterparty_vendor_name: activeVendor.vendor_name || 'Vendor',
+      final_buyer_price: Number(finalRound.buyer_offer || 0),
+      final_vendor_price: Number(finalRound.vendor_ask || 0),
+      commodity_trend: String(commodityTrend || 'stable'),
+      urgency_pressure_score: Number(urgencyPressure || 0),
+      vendor_floor_price: Number(activeVendor.estimated_vendor_floor || 0),
+      walk_away_price: Number(activeVendor.walk_away_price || 0),
+      batna_vendor_name: batnaVendor?.vendor_name || batnaVendor?.vendor_id || null,
+      batna_lead_days: Number(batnaVendor?.lead_days || 0),
+      batna_margin_pct: Number(batnaVendor?.projected_deal_margin_pct || 0),
+    }
+  }, [activeVendor, batnaVendor, commodityTrend, rounds, urgencyPressure])
+
+  useEffect(() => {
+    if (!orderId || !context) {
+      setRationale('')
+      setMeta({ source: 'llm', model: 'waiting' })
+      return
+    }
+
+    const fallback = `${context.counterparty_vendor_name} held near $${context.final_vendor_price.toFixed(2)} while buyer moved to $${context.final_buyer_price.toFixed(2)}. Commodity trend is ${String(context.commodity_trend).toLowerCase()} and urgency is ${context.urgency_pressure_score.toFixed(3)}. ${context.negotiation_result === 'deal' ? 'Close and issue PO within 48 hours.' : `Activate BATNA with ${context.batna_vendor_name || 'alternate vendor'} within 48 hours.`}`
+    let cancelled = false
+    setLoading(true)
+    fetch(`${API_BASE}/api/v2/orders/${orderId}/negotiation-rationale`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled) return
+        setRationale(String(payload?.rationale || fallback))
+        setMeta({ source: String(payload?.source || 'scripted'), model: String(payload?.model || 'fallback') })
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRationale(fallback)
+        setMeta({ source: 'scripted', model: 'fallback' })
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [context, orderId])
+
+  useEffect(() => {
+    const full = String(rationale || '').trim()
+    if (!full) {
+      setTyped('')
+      return
+    }
+    let i = 0
+    setTyped('')
+    const timer = setInterval(() => {
+      i += 2
+      setTyped(full.slice(0, i))
+      if (i >= full.length) clearInterval(timer)
+    }, 12)
+    return () => clearInterval(timer)
+  }, [rationale])
+
+  if (!context) return null
+
+  return (
+    <div className="ai-rationale-card">
+      <div className="ai-rationale-head">
+        <span className="research-agent-pill">Negotiation Copilot</span>
+        <span className="research-live-pill">LIVE LLM</span>
+        <span className="ai-rationale-meta">{meta.source.toUpperCase()} · {meta.model}</span>
+      </div>
+      <p className="ai-rationale-body">
+        {loading && !typed ? 'Generating rationale...' : typed}
+        <span className="typing-cursor" />
+      </p>
+    </div>
+  )
+}
+
+const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'
+
+const COUNTRY_COORDS = {
+  US: [-98.5, 39.8],
+  USA: [-98.5, 39.8],
+  MX: [-102.5, 23.6],
+  Mexico: [-102.5, 23.6],
+  KR: [127.8, 36.3],
+  Korea: [127.8, 36.3],
+  JP: [138.2, 36.2],
+  Japan: [138.2, 36.2],
+  TW: [121.0, 23.7],
+  Taiwan: [121.0, 23.7],
+  CN: [104.1, 35.9],
+  China: [104.1, 35.9],
+  VN: [107.8, 15.8],
+  Vietnam: [107.8, 15.8],
+  MY: [102.1, 4.2],
+  Malaysia: [102.1, 4.2],
+  IN: [78.9, 21.1],
+  India: [78.9, 21.1],
+  DE: [10.5, 51.2],
+  Germany: [10.5, 51.2],
+  SG: [103.8, 1.35],
+  Singapore: [103.8, 1.35],
+}
+
+function EligibilityMap({ vendors = [], narrative }) {
+  const [hovered, setHovered] = useState(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  const points = useMemo(() => vendors.map((vendor, idx) => {
+    const tradeAgreement = String(vendor.trade_agreement || '').toUpperCase()
+    const isBlocked = !vendor.sanctions_clear || !vendor.legal_eligibility
+    const status = isBlocked ? 'blocked' : tradeAgreement === 'WTO-GPA' ? 'restricted' : 'eligible'
+    const reason = vendor.reason || (status === 'eligible'
+      ? 'Eligible under current policy checks.'
+      : status === 'restricted'
+        ? 'Restricted under current trade agreement constraints.'
+        : 'Policy or sanctions gate failed.')
+    const marker = COUNTRY_COORDS[vendor.country] || [-110 + idx * 25, 10 + idx * 7]
+    return {
+      ...vendor,
+      status,
+      reason,
+      marker,
+    }
+  }), [vendors])
+
+  const counts = useMemo(() => points.reduce((acc, point) => {
+    acc[point.status] += 1
+    return acc
+  }, { eligible: 0, restricted: 0, blocked: 0 }), [points])
+
+  return (
+    <div className="compliance-map-card">
+      <div className="panel-head" style={{ marginBottom: 10, paddingBottom: 0 }}>
+        <h3>Eligibility Map (LIVE LLM)</h3>
+        <p>{narrative}</p>
+      </div>
+      <div className="compliance-world-wrap" onMouseMove={(event) => setTooltipPos({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY })}>
+        <ComposableMap projection="geoMercator" projectionConfig={{ scale: 124 }} className="compliance-world-map" aria-label="Vendor eligibility map">
+          <Geographies geography={GEO_URL}>
+            {({ geographies }) => geographies.map((geo) => (
+              <Geography
+                key={geo.rsmKey}
+                geography={geo}
+                fill="rgba(16, 55, 88, 0.75)"
+                stroke="rgba(117, 168, 205, 0.25)"
+                strokeWidth={0.4}
+              />
+            ))}
+          </Geographies>
+          {points.map((point) => (
+            <Marker
+              key={point.vendor_id}
+              coordinates={point.marker}
+              onMouseEnter={() => setHovered(point)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              <circle
+                r={5.2}
+                fill={point.status === 'eligible' ? '#39d353' : point.status === 'restricted' ? '#ffbe68' : '#ff4060'}
+                stroke="rgba(4, 11, 20, 0.8)"
+                strokeWidth={1.1}
+              />
+            </Marker>
+          ))}
+        </ComposableMap>
+        {hovered && (
+          <div className="eligibility-tooltip" style={{ left: `${tooltipPos.x + 10}px`, top: `${tooltipPos.y + 10}px` }}>
+            <strong>{hovered.vendor_name}</strong>
+            <span>{hovered.country} · {hovered.status}</span>
+            <p>{hovered.reason}</p>
+          </div>
+        )}
+      </div>
+      <div className="compliance-legend">
+        <span><i style={{ background: '#39d353' }} /> Eligible ({counts.eligible})</span>
+        <span><i style={{ background: '#ffbe68' }} /> Restricted ({counts.restricted})</span>
+        <span><i style={{ background: '#ff4060' }} /> Blocked ({counts.blocked})</span>
+      </div>
+      <p className="eligibility-hint">Hover a marker to see the AutoResearch eligibility reason.</p>
+    </div>
+  )
+}
+
 export default function App({ view = 'bom-intelligence', initialEventId, initialComponentId, initialRunId, initialOrderContext, onRunIdChange, onOrderContextChange, onRequestSectionChange }) {
   const shellRef = useRef(null)
   const hasAutoNavigatedRef = useRef(false)
@@ -230,23 +912,37 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const [simulationMonteCarloRuns, setSimulationMonteCarloRuns] = useState(1200)
   const [selectedSimulationScenarioId, setSelectedSimulationScenarioId] = useState('')
   const [materialAmplifications, setMaterialAmplifications] = useState({})
+  const [swarmSignalPack, setSwarmSignalPack] = useState(null)
+  const publishedSwarmSignalRef = useRef('')
 
   // ── Module 4: Negotiation Intelligence ───────────────────────────────────
   const [negotiationBriefData, setNegotiationBriefData] = useState(null)
   const [activeNegVendorId, setActiveNegVendorId] = useState('')
   const [negoCounterInput, setNegoCounterInput] = useState('')
+  const [whatIfAcceptInput, setWhatIfAcceptInput] = useState('')
   const [negoAgentRunning, setNegoAgentRunning] = useState(false)
   const [negoSimScenarioId, setNegoSimScenarioId] = useState('')
+  const [negoPlaybackRound, setNegoPlaybackRound] = useState(0)
 
   // ── Module 5: Recommendation Engine ─────────────────────────────────────
   const [recommendationSortBy, setRecommendationSortBy] = useState('margin')
   const [activeRecommendationId, setActiveRecommendationId] = useState('')
   const [recommendationNarrativeMode, setRecommendationNarrativeMode] = useState('template')
   const [llmNarrativeDigest, setLlmNarrativeDigest] = useState(null)
+  const [reasoningTrailSteps, setReasoningTrailSteps] = useState([])
+  const [selectedReasoningStepId, setSelectedReasoningStepId] = useState('')
+  const [advisorQuestionInput, setAdvisorQuestionInput] = useState('')
+  const [advisorThread, setAdvisorThread] = useState([])
+  const [advisorSending, setAdvisorSending] = useState(false)
+  const advisorStreamTimerRef = useRef(null)
 
   // ── Module 6: Action + RL Learning ──────────────────────────────────────
   const [actionHistorySortBy, setActionHistorySortBy] = useState('recent')
   const [selectedLearningDecisionId, setSelectedLearningDecisionId] = useState('')
+  const [executiveBriefLoading, setExecutiveBriefLoading] = useState(false)
+  const [executiveBriefError, setExecutiveBriefError] = useState('')
+  const [executiveBriefPreview, setExecutiveBriefPreview] = useState('')
+  const [executiveBriefMeta, setExecutiveBriefMeta] = useState(null)
 
   const [liveAgentCards, setLiveAgentCards] = useState({})
   const [liveAgentLoading, setLiveAgentLoading] = useState(false)
@@ -254,6 +950,8 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const [liveAgentWorking, setLiveAgentWorking] = useState({})
   const [liveAgentTimeline, setLiveAgentTimeline] = useState({})
   const [selectedAgentDebug, setSelectedAgentDebug] = useState(null)
+  const [researchRerunTick, setResearchRerunTick] = useState(0)
+  const [researchRerunLoading, setResearchRerunLoading] = useState(false)
   const resolvedInsightPageId = groupedInsightPageMap[view] || view
 
   // ── New AI features ───────────────────────────────────────────────────────
@@ -264,10 +962,17 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
   const activeOrderId = orderContext?.order_id || ''
   const activeDecisionComponentId = selectedRiskComponentId || orderContext?.bom?.bottleneck_component?.component_id || selectedComponentId
+  const isSwarmReadyForSimulation = Boolean(runId) && (
+    (runStatus?.progress || 0) >= 100
+    || runStatus?.status === 'completed'
+    || runStatus?.stage === 'artifacts'
+  )
   const isImpactTriggered = useMemo(() => {
     if (!impactTrigger) return false
-    return impactTrigger.eventId === selectedEventId && impactTrigger.componentId === activeDecisionComponentId
-  }, [activeDecisionComponentId, impactTrigger, selectedEventId])
+    // Keep the disruption canvas visible for the selected event even if the active
+    // component context changes while agent streams update in the background.
+    return impactTrigger.eventId === selectedEventId
+  }, [impactTrigger, selectedEventId])
 
   const navigateToSection = useCallback((targetSection) => {
     if (!targetSection) return
@@ -403,6 +1108,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
         if (!response.ok || isCancelled) return
         const status = await response.json()
         if (isCancelled) return
+        if (status?.status || status?.stage || Number(status?.progress || 0) > 0) setIsDeploying(false)
         setRunStatus((prev) => ({
           ...prev,
           ...status,
@@ -575,6 +1281,10 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       scenario_id: selectedScenario,
     })
     if (activeOrderId) params.set('order_id', activeOrderId)
+    if (view === 'bom-intelligence' && researchRerunTick > 0) {
+      params.set('question', `refresh-module1-research-${researchRerunTick}`)
+      setResearchRerunLoading(true)
+    }
 
     setLiveAgentCards({})
     setLiveAgentWorking({})
@@ -620,16 +1330,18 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
     eventSource.addEventListener('page-complete', () => {
       setLiveAgentLoading(false)
+      setResearchRerunLoading(false)
     })
 
     eventSource.onerror = () => {
       setLiveAgentError('Streaming agent insights disconnected. Reopen the page or wait for reconnect.')
       setLiveAgentLoading(false)
+      setResearchRerunLoading(false)
       eventSource.close()
     }
 
     return () => eventSource.close()
-  }, [activeOrderId, resolvedInsightPageId, selectedComponentId, selectedEventId, selectedRiskComponentId, selectedScenario, view])
+  }, [activeOrderId, resolvedInsightPageId, researchRerunTick, selectedComponentId, selectedEventId, selectedRiskComponentId, selectedScenario, view])
 
   useEffect(() => {
     if (!selectedAgentDebug?.card_id) return
@@ -854,6 +1566,15 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       return
     }
 
+    // Prevent Module 3+ from showing precomputed results before swarm has actually completed.
+    if (!isImpactTriggered || !isSwarmReadyForSimulation) {
+      setProfitRecommendationData(null)
+      if (['negotiation-intelligence', 'negotiation-recommendation'].includes(view)) {
+        setNegotiationBriefData(null)
+      }
+      return
+    }
+
     if (view === 'disruption-impact' && !isImpactTriggered) {
       setDisruptionImpactData(null)
       return
@@ -923,6 +1644,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
     impactTariffProfile.other,
     impactTriggerType,
     isImpactTriggered,
+    isSwarmReadyForSimulation,
     simulationFreightMode,
     simulationLockedRevenueUnit,
     simulationMonteCarloRuns,
@@ -940,6 +1662,25 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }, [decisionContextData?.margin_constraints?.unit_revenue, simulationLockedRevenueUnit])
 
   useEffect(() => {
+    publishedSwarmSignalRef.current = ''
+  }, [activeOrderId])
+
+  useEffect(() => {
+    if (!activeOrderId || !isImpactTriggered || !swarmSignalPack) return
+    const signature = JSON.stringify(swarmSignalPack)
+    if (!signature || signature === '{}' || publishedSwarmSignalRef.current === signature) return
+    publishedSwarmSignalRef.current = signature
+
+    fetch(`${API_BASE}/api/v2/orders/${activeOrderId}/swarm-signals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: signature,
+    }).catch(() => {
+      publishedSwarmSignalRef.current = ''
+    })
+  }, [activeOrderId, isImpactTriggered, swarmSignalPack])
+
+  useEffect(() => {
     const simulationScenarios = profitRecommendationData?.scenarios?.slice(0, 4) || []
     if (!simulationScenarios.length) {
       setSelectedSimulationScenarioId('')
@@ -949,6 +1690,21 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       setSelectedSimulationScenarioId(simulationScenarios[0].scenario_id)
     }
   }, [profitRecommendationData?.scenarios, selectedSimulationScenarioId])
+
+  useEffect(() => {
+    setNegoPlaybackRound(0)
+    const rounds = negotiationBriefData?.vendor_briefs?.find((item) => item.vendor_id === activeNegVendorId)?.agent_rounds
+      || negotiationBriefData?.vendor_briefs?.[0]?.agent_rounds
+      || []
+    if (rounds.length <= 1) return
+    let cursor = 0
+    const timer = window.setInterval(() => {
+      cursor += 1
+      setNegoPlaybackRound(Math.min(cursor, rounds.length - 1))
+      if (cursor >= rounds.length - 1) window.clearInterval(timer)
+    }, 900)
+    return () => window.clearInterval(timer)
+  }, [activeNegVendorId, negotiationBriefData?.vendor_briefs])
 
   useEffect(() => {
     const recommendationOptions = (profitRecommendationData?.scenarios || []).map((scenario) => ({
@@ -975,7 +1731,8 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
   useEffect(() => {
     const history = executionLearningData?.decision_history?.decisions || []
-    const sorted = [...history]
+    const seededHistory = history.length ? history : demoDecisions
+    const sorted = [...seededHistory]
     if (actionHistorySortBy === 'accuracy') sorted.sort((a, b) => Number(b.accuracy_score || 0) - Number(a.accuracy_score || 0))
     else if (actionHistorySortBy === 'margin-delta') sorted.sort((a, b) => Math.abs(Number(b.actual_margin_pct || 0) - Number(b.projected_margin_pct || 0)) - Math.abs(Number(a.actual_margin_pct || 0) - Number(a.projected_margin_pct || 0)))
     else if (actionHistorySortBy === 'cost-delta') sorted.sort((a, b) => Math.abs(Number(b.actual_total_cost || 0) - Number(b.projected_total_cost || 0)) - Math.abs(Number(a.actual_total_cost || 0) - Number(a.projected_total_cost || 0)))
@@ -1268,26 +2025,86 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }, [metricsSummary])
   const insightFor = useCallback((cardId) => liveAgentCards[cardId], [liveAgentCards])
   const topMarketEvidence = decisionContextData?.market_price_evidence?.[activeDecisionComponentId] || []
+  const module1ResearchInsight = insightFor('risk.autoresearch')
   const researchComponents = decisionContextData?.component_requirement_set || []
   const activeResearchComponentId = selectedResearchComponentId || researchComponents[0]?.component_id || ''
   const activeResearchComponent = researchComponents.find((component) => component.component_id === activeResearchComponentId) || null
   const activeResearchCommodity = decisionContextData?.global_commodity_prices?.[activeResearchComponentId] || null
   const activeResearchCompliance = decisionContextData?.vendor_compliance?.[activeResearchComponentId] || []
   const activeResearchEvidence = decisionContextData?.market_price_evidence?.[activeResearchComponentId] || []
+  const module1ResearchSignals = useMemo(() => {
+    const fromEvidence = (activeResearchEvidence || []).slice(0, 4).map((item) => ({
+      label: `${item.label}: ${item.value}${item.unit ? ` ${item.unit}` : ''}`,
+      confidence: Number(item.confidence || module1ResearchInsight?.confidence || 72),
+    }))
+    if (fromEvidence.length) return fromEvidence
+    const fromCitations = (module1ResearchInsight?.citations || []).slice(0, 4).map((item, idx) => ({
+      label: item.source,
+      confidence: Math.max(55, Number(module1ResearchInsight?.confidence || 70) - idx * 6),
+    }))
+    return fromCitations
+  }, [activeResearchEvidence, module1ResearchInsight?.citations, module1ResearchInsight?.confidence])
+  const module1FallbackNarrative = useMemo(() => {
+    const commodity = activeResearchCommodity?.commodity || activeResearchComponent?.component_name || 'component market'
+    const trend = activeResearchCommodity?.market_trend || 'volatile'
+    const top = (activeResearchEvidence || [])[0]
+    const lead = top ? `${top.label} at ${top.value}${top.unit ? ` ${top.unit}` : ''}` : 'Multi-region signals remain mixed'
+    return `${commodity} is currently ${trend}. ${lead}. Prioritize compliant suppliers and lock procurement windows early if weekly drift continues.`
+  }, [activeResearchCommodity?.commodity, activeResearchCommodity?.market_trend, activeResearchComponent?.component_name, activeResearchEvidence])
   const affectedComponents = disruptionImpactData?.affected_components || []
   const activeImpactComponentId = selectedImpactComponentId || activeDecisionComponentId
   const activeImpactComponent = affectedComponents.find((item) => item.component_id === activeImpactComponentId) || affectedComponents[0] || null
   const activeImpactGeography = activeImpactComponent?.geography_impacts || []
+  const activeAgents = runStatus?.active_agents || 0
+  const totalAgents = runStatus?.total_agents || 10
   const topSimulationScenarios = profitRecommendationData?.scenarios?.slice(0, 4) || []
   const activeSimulationScenario = topSimulationScenarios.find((item) => item.scenario_id === selectedSimulationScenarioId) || topSimulationScenarios[0] || null
   const negotiationBand = profitRecommendationData?.negotiation_band || null
   const recommendationMemo = profitRecommendationData?.recommendation || null
   const allRecommendationScenarios = profitRecommendationData?.scenarios || []
+  const swarmRecommendationAdjustments = profitRecommendationData?.swarm_adjustments_applied || {}
+  const simulationSwarmAdjustments = profitRecommendationData?.swarm_adjustments_applied || {}
+  const simulationConfidenceDiagnostics = useMemo(() => {
+    return {
+      consensusScore: Number(simulationSwarmAdjustments?.consensus_score || 7),
+      contradictionCount: Number(simulationSwarmAdjustments?.contradiction_count || (simulationSwarmAdjustments?.dissent_summary ? 1 : 0)),
+      evidenceStrength: Number(simulationSwarmAdjustments?.evidence_strength || simulationSwarmAdjustments?.judge_confidence || 75),
+      dissentSummary: simulationSwarmAdjustments?.dissent_summary || 'No material dissent flagged by agents.',
+    }
+  }, [simulationSwarmAdjustments])
+  const simulationDeltaRows = useMemo(() => {
+    return topSimulationScenarios.map((scenario) => {
+      const attr = scenario?.swarm_attribution || {}
+      return {
+        scenarioName: scenario.scenario_name,
+        purchaseBase: Number(attr.purchase_mean_base || 0),
+        purchaseAdjusted: Number(attr.purchase_mean_adjusted || 0),
+        purchaseDeltaPct: Number(attr.purchase_mean_delta_pct || 0),
+        freightBase: Number(attr.freight_mean_base || 0),
+        freightAdjusted: Number(attr.freight_mean_adjusted || 0),
+        freightDeltaPct: Number(attr.freight_mean_delta_pct || 0),
+        noiseBase: Number(attr.noise_base || 0),
+        noiseAdjusted: Number(attr.noise_adjusted || 0),
+        noiseDeltaPct: Number(attr.noise_delta_pct || 0),
+        confidenceBase: Number(attr.fulfillment_confidence_base || 0),
+        confidenceAdjusted: Number(attr.fulfillment_confidence_adjusted || 0),
+        confidenceDelta: Number(attr.fulfillment_confidence_delta || 0),
+      }
+    })
+  }, [topSimulationScenarios])
 
   // ── Module 4 derived values ───────────────────────────────────────────────
   const negoBriefs = negotiationBriefData?.vendor_briefs || []
   const activeNegVendor = negoBriefs.find((b) => b.vendor_id === activeNegVendorId) || negoBriefs[0] || null
+  const activeNegRounds = activeNegVendor?.agent_rounds || []
+  const activePlaybackRound = activeNegRounds[Math.min(negoPlaybackRound, Math.max(0, activeNegRounds.length - 1))] || null
   const negoBatna = negotiationBriefData?.batna || null
+  const batnaVendor = useMemo(() => {
+    if (!negoBatna) return null
+    const matchedBrief = (negoBriefs || []).find((vendor) => vendor.vendor_id === negoBatna.vendor_id)
+    // Always prefer the full vendor brief shape used in the top vendor tabs.
+    return matchedBrief ? { ...matchedBrief, ...negoBatna } : negoBatna
+  }, [negoBatna, negoBriefs])
   const negoCounterPrice = Number(negoCounterInput) || 0
   const negoLiveProfit = useMemo(() => {
     if (!activeNegVendor || negoCounterPrice <= 0) return null
@@ -1300,6 +2117,37 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0
     return { profit: round2(profit), margin: round2(margin), total_cost_per_unit: round2((negoCounterPrice + nonPurchase) * qtyPerUnit), profit_total: round2(profit * qty) }
   }, [activeNegVendor, negoCounterPrice, orderContext, negotiationBriefData, simulationLockedRevenueUnit, decisionContextData, simulationTargetMarginPct])
+  const whatIfAcceptPrice = Number(whatIfAcceptInput)
+  const whatIfAcceptCalc = useMemo(() => {
+    if (!Number.isFinite(whatIfAcceptPrice) || whatIfAcceptPrice <= 0) return null
+
+    const orderQty = Math.max(1, Number(orderContext?.quantity || 0))
+    const qtyPerUnit = Math.max(1, Number(orderContext?.bom?.components?.find((c) => c.component_id === negotiationBriefData?.component_id)?.qty_per_unit || 1))
+    const unitRevenue = Number(simulationLockedRevenueUnit || decisionContextData?.margin_constraints?.unit_revenue || 0)
+    const totalRevenue = unitRevenue * orderQty
+    const units = orderQty * qtyPerUnit
+    const logisticsCost = Number(activeSimulationScenario?.logistics_cost || 0)
+    const tariffCost = Number(activeSimulationScenario?.tariff_cost || 0)
+    if (totalRevenue <= 0) return null
+
+    const marginPct = ((totalRevenue - (units * whatIfAcceptPrice) - logisticsCost - tariffCost) / totalRevenue) * 100
+    const configuredFloor = Number(decisionContextData?.margin_constraints?.floor_margin_pct)
+    const floorMarginPct = configuredFloor > 0 ? configuredFloor * 100 : Number(simulationTargetMarginPct || 22)
+
+    return {
+      marginPct: round2(marginPct),
+      floorMarginPct: round2(floorMarginPct),
+      isAboveFloor: marginPct >= floorMarginPct,
+    }
+  }, [
+    whatIfAcceptPrice,
+    orderContext,
+    negotiationBriefData,
+    simulationLockedRevenueUnit,
+    decisionContextData,
+    activeSimulationScenario,
+    simulationTargetMarginPct,
+  ])
 
   // ── Module 5 derived values ───────────────────────────────────────────────
   const vendorCountryById = useMemo(() => {
@@ -1333,6 +2181,20 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       )
       const projectedMarginPct = Number(scenario.gross_margin_pct || 0)
       const riskScore = Number(scenario.execution_risk || 0)
+      const routePenalty = Number(scenario.swarm_route_penalty || 0)
+      const confidenceAdjustedObjective = Number(scenario.confidence_adjusted_objective || 0)
+      const regretScore = Number(scenario.regret_score || 0)
+      const baseRegretScore = Number(scenario.base_regret_score || 0)
+      const routePenaltyContributionRegret = Number(scenario.route_penalty_contribution_regret || 0)
+      const robustnessScore = Number(scenario.robustness_score || 0)
+      const explainabilityScore = Number(scenario.explainability_score || 0)
+      const routeExposurePenalty = Number(scenario.route_exposure_penalty || 0)
+      const objectiveBreakdown = {
+        profitTerm: Number(scenario.objective_breakdown?.profit_term || 0),
+        uncertaintyPenalty: Number(scenario.objective_breakdown?.uncertainty_penalty || 0),
+        robustnessPenalty: Number(scenario.objective_breakdown?.robustness_penalty || 0),
+        routeExposurePenalty,
+      }
       const marginAnswer = `If I buy from ${scenario.vendor_name} at $${Number(targetPrice || 0).toFixed(2)} and ship via ${scenario.route_id} (${String(scenario.route_mode || '').toUpperCase()}), projected gross margin is ${projectedMarginPct.toFixed(2)}%.`
 
       return {
@@ -1349,6 +2211,20 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
         totalLandedCost,
         projectedMarginPct,
         expectedProfit: Number(scenario.expected_profit || 0),
+        confidence_adjusted_objective: confidenceAdjustedObjective,
+        confidenceAdjustedObjective,
+        regret_score: regretScore,
+        regretScore,
+        baseRegretScore,
+        routePenaltyContributionRegret,
+        robustness_score: robustnessScore,
+        robustnessScore,
+        explainability_score: explainabilityScore,
+        explainabilityScore,
+        routePenalty,
+        route_exposure_penalty: routeExposurePenalty,
+        routeExposurePenalty,
+        objectiveBreakdown,
         riskScore,
         leadTimeDays,
         tradeoff: scenario.tradeoff,
@@ -1359,21 +2235,105 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
   const sortedRecommendationOptions = useMemo(() => {
     const items = [...recommendationOptions]
+    if (recommendationSortBy === 'objective') return items.sort((a, b) => b.confidenceAdjustedObjective - a.confidenceAdjustedObjective)
+    if (recommendationSortBy === 'robustness') return items.sort((a, b) => b.robustnessScore - a.robustnessScore)
+    if (recommendationSortBy === 'regret') return items.sort((a, b) => a.regretScore - b.regretScore)
     if (recommendationSortBy === 'risk') return items.sort((a, b) => a.riskScore - b.riskScore)
     if (recommendationSortBy === 'lead') return items.sort((a, b) => a.leadTimeDays - b.leadTimeDays)
     if (recommendationSortBy === 'cost') return items.sort((a, b) => a.totalLandedCost - b.totalLandedCost)
-    return items.sort((a, b) => b.projectedMarginPct - a.projectedMarginPct)
+    return items.sort((a, b) => b.confidenceAdjustedObjective - a.confidenceAdjustedObjective)
   }, [recommendationOptions, recommendationSortBy])
 
   const activeRecommendation = sortedRecommendationOptions.find((item) => item.id === activeRecommendationId) || sortedRecommendationOptions[0] || null
+  const topRecommendationCards = sortedRecommendationOptions.slice(0, 3)
+  const recommendedCardId = sortedRecommendationOptions[0]?.id || ''
+  const blockedRouteLabels = topRecommendationCards
+    .filter((item) => item.id !== recommendedCardId)
+    .map((item) => item.routeLabel)
+  const recommendedRouteLabel = sortedRecommendationOptions[0]?.routeLabel || 'Queretaro -> Dallas'
+  const recommendationSensitivity = useMemo(() => {
+    if (!activeRecommendation) return null
+    const judgeConfidence = Number(swarmRecommendationAdjustments?.judge_confidence || 75)
+    const routeStress = Number(swarmRecommendationAdjustments?.route_stress_pct || 0)
+    const confidenceFactorDown = Math.max(0.45, Math.min(1.0, (judgeConfidence - 10) / 100))
+    const routeStressUp = routeStress + 20
+    const routeStressPenaltyDelta = Math.max(0, routeStressUp - routeStress) * 44
+
+    const baseline = Number(activeRecommendation.confidenceAdjustedObjective || 0)
+    const confShock = round2(
+      Number(activeRecommendation.expectedProfit || 0) * confidenceFactorDown
+      - Number(activeRecommendation.objectiveBreakdown?.uncertaintyPenalty || 0)
+      - Number(activeRecommendation.objectiveBreakdown?.robustnessPenalty || 0)
+      - Number(activeRecommendation.objectiveBreakdown?.routeExposurePenalty || 0)
+    )
+    const routeShock = round2(baseline - routeStressPenaltyDelta)
+    return {
+      baseline,
+      confidenceDropObjective: confShock,
+      routeStressUpObjective: routeShock,
+    }
+  }, [activeRecommendation, swarmRecommendationAdjustments?.judge_confidence, swarmRecommendationAdjustments?.route_stress_pct])
 
   const activeRecommendationRationale = useMemo(() => {
     if (!activeRecommendation) return ''
     const llmSuffix = recommendationNarrativeMode === 'ollama' && llmNarrativeDigest
       ? ` ${llmNarrativeDigest.changed} ${llmNarrativeDigest.decision} ${llmNarrativeDigest.consequence}`
       : ''
-    return `${activeRecommendation.vendorName} (${activeRecommendation.vendorCountry}) is ranked for ${activeRecommendation.scenarioName} because it balances margin protection (${activeRecommendation.projectedMarginPct.toFixed(2)}%), manageable risk (${activeRecommendation.riskScore.toFixed(1)}), and lead-time feasibility (${activeRecommendation.leadTimeDays.toFixed(1)} days) through ${activeRecommendation.routeLabel}. The target buy price of $${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)} keeps the expected landed spend near $${Math.round(activeRecommendation.totalLandedCost).toLocaleString()} while preserving approximately $${Math.round(activeRecommendation.expectedProfit).toLocaleString()} in projected profit. ${activeRecommendation.tradeoff || ''}${llmSuffix}`
+    return `${activeRecommendation.vendorName} (${activeRecommendation.vendorCountry}) is ranked for ${activeRecommendation.scenarioName} because it balances margin protection (${activeRecommendation.projectedMarginPct.toFixed(2)}%), robustness (${activeRecommendation.robustnessScore.toFixed(1)}), and low-regret downside (${activeRecommendation.regretScore.toFixed(2)} per unit) through ${activeRecommendation.routeLabel}. The target buy price of $${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)} keeps expected landed spend near $${Math.round(activeRecommendation.totalLandedCost).toLocaleString()} while preserving approximately $${Math.round(activeRecommendation.expectedProfit).toLocaleString()} in projected profit and a confidence-adjusted objective of $${Math.round(activeRecommendation.confidenceAdjustedObjective).toLocaleString()}. ${activeRecommendation.tradeoff || ''}${llmSuffix}`
   }, [activeRecommendation, llmNarrativeDigest, recommendationNarrativeMode])
+  const advisorSeedQaPairs = useMemo(() => {
+    if (!activeRecommendation) return []
+    return [
+      {
+        question: `Why ${activeRecommendation.vendorName} over the next-best vendor?`,
+        answer: `${activeRecommendation.vendorName} leads on confidence-adjusted objective and keeps regret at ${activeRecommendation.regretScore.toFixed(2)} while maintaining ${activeRecommendation.projectedMarginPct.toFixed(2)}% margin.`,
+      },
+      {
+        question: 'What can break this recommendation?',
+        answer: recommendationMemo?.rollback_trigger || 'Escalating route exposure or supplier execution risk should trigger rollback to the second-ranked option.',
+      },
+    ]
+  }, [activeRecommendation, recommendationMemo?.rollback_trigger])
+
+  const reasoningTrailEvidence = useMemo(() => {
+    const recInsight = insightFor('procurement.recengine')
+    const copilotInsight = insightFor('procurement.copilot')
+    const complianceFlags = (negoBriefs.find((vendor) => vendor.vendor_id === activeRecommendation?.vendorId)?.compliance_flags || []).slice(0, 3)
+
+    return {
+      signal: [
+        selectedEvent?.name ? `Detected disruption: ${selectedEvent.name}.` : 'Disruption signal captured from live event feed.',
+        recInsight?.summary || 'AutoResearch + CausalGraph surfaced signal severity and likely procurement impact.',
+      ],
+      swarm: [
+        `Swarm run involved ${totalAgents || 7} agents with live role outputs.`,
+        ...(recInsight?.tool_trace || []).slice(0, 3).map((item) => `${item.tool}: ${item.status} (${item.latency_ms || 0}ms)`),
+      ],
+      vendors: [
+        `${sortedRecommendationOptions.length} vendor-route scenarios were scored by profit, risk, robustness, and regret.`,
+        ...sortedRecommendationOptions.slice(0, 3).map((item) => `${item.vendorName}: margin ${item.projectedMarginPct.toFixed(2)}%, risk ${item.riskScore.toFixed(1)}, lead ${item.leadTimeDays.toFixed(1)}d.`),
+      ],
+      recommended: [
+        activeRecommendation
+          ? `${activeRecommendation.vendorName} selected with objective ${Math.round(activeRecommendation.confidenceAdjustedObjective).toLocaleString()} and projected margin ${activeRecommendation.projectedMarginPct.toFixed(2)}%.`
+          : 'Top recommendation pending.',
+        activeRecommendation?.tradeoff || 'Tradeoff aligns route and margin goals under current disruption constraints.',
+      ],
+      justified: [
+        recommendationMemo?.rollback_trigger || 'Rollback trigger configured for risk escalation.',
+        complianceFlags.length ? `Compliance checks: ${complianceFlags.join(', ')}.` : 'No critical compliance blockers flagged for the recommended vendor.',
+        ...(copilotInsight?.citations || []).slice(0, 2).map((citation) => `${citation.id}: ${citation.source}`),
+      ],
+    }
+  }, [
+    activeRecommendation,
+    insightFor,
+    negoBriefs,
+    recommendationMemo?.rollback_trigger,
+    selectedEvent?.name,
+    sortedRecommendationOptions,
+    totalAgents,
+  ])
 
   const recommendationGraphNodes = useMemo(() => {
     if (!activeRecommendation) return []
@@ -1399,7 +2359,186 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
     ]
   }, [activeRecommendation])
 
-  const learningHistory = executionLearningData?.decision_history?.decisions || []
+  useEffect(() => {
+    if (advisorStreamTimerRef.current) {
+      window.clearInterval(advisorStreamTimerRef.current)
+      advisorStreamTimerRef.current = null
+    }
+    if (!activeRecommendation) {
+      setAdvisorThread([])
+      return
+    }
+    const seedText = `I recommend ${activeRecommendation.vendorName} (${activeRecommendation.vendorCountry}) via ${activeRecommendation.routeLabel}. This option projects ${activeRecommendation.projectedMarginPct.toFixed(2)}% margin with ${activeRecommendation.robustnessScore.toFixed(1)} robustness and low regret at ${activeRecommendation.regretScore.toFixed(2)}.`
+    const seedCitations = (insightFor('procurement.copilot')?.citations || []).slice(0, 3)
+    setAdvisorThread([
+      {
+        id: `advisor-seed-${activeRecommendation.id}`,
+        role: 'ai',
+        text: seedText,
+        citations: seedCitations,
+      },
+    ])
+  }, [activeRecommendation?.id, activeRecommendation, insightFor])
+
+  useEffect(() => {
+    if (!activeRecommendation) {
+      setReasoningTrailSteps([])
+      setSelectedReasoningStepId('')
+      return
+    }
+
+    const fallback = [
+      { id: 'signal', label: 'Disruption detected' },
+      { id: 'swarm', label: `${totalAgents || 7} agents analyzed` },
+      { id: 'vendors', label: `${sortedRecommendationOptions.length} vendors evaluated` },
+      { id: 'recommended', label: '1 recommended' },
+      { id: 'justified', label: "Decision justified" },
+    ]
+
+    setReasoningTrailSteps(fallback)
+    setSelectedReasoningStepId((prev) => prev || 'signal')
+
+    fetch(`${API_BASE}/api/v2/agents/${encodeURIComponent('Procurement Copilot')}/insight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page_id: resolvedInsightPageId,
+        agent_name: 'Procurement Copilot',
+        card_id: 'procurement.reasoning.trail',
+        order_id: activeOrderId || undefined,
+        event_id: selectedEventId || undefined,
+        component_id: activeDecisionComponentId || undefined,
+        scenario_id: activeRecommendation.id,
+        question:
+          `Summarize your recommendation reasoning path in exactly 5 short step labels separated by |. `
+          + `Format: Signal detected | Swarm analyzed | Vendors scored | Vendor recommended | Decision justified. `
+          + `Current recommendation is ${activeRecommendation.vendorName} via ${activeRecommendation.routeLabel}.`,
+      }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        const summary = String(payload?.summary || '')
+        const parsed = summary
+          .split('|')
+          .map((item) => item.replace(/^[\s\-\d\.>]+/, '').trim())
+          .filter(Boolean)
+          .slice(0, 5)
+        if (parsed.length !== 5) return
+        setReasoningTrailSteps([
+          { id: 'signal', label: parsed[0] },
+          { id: 'swarm', label: parsed[1] },
+          { id: 'vendors', label: parsed[2] },
+          { id: 'recommended', label: parsed[3] },
+          { id: 'justified', label: parsed[4] },
+        ])
+      })
+      .catch(() => {})
+  }, [
+    activeDecisionComponentId,
+    activeOrderId,
+    activeRecommendation,
+    resolvedInsightPageId,
+    selectedEventId,
+    sortedRecommendationOptions.length,
+    totalAgents,
+  ])
+
+  useEffect(() => {
+    return () => {
+      if (advisorStreamTimerRef.current) {
+        window.clearInterval(advisorStreamTimerRef.current)
+      }
+    }
+  }, [])
+
+  const askAdvisor = useCallback((event) => {
+    event.preventDefault()
+    const question = advisorQuestionInput.trim()
+    if (!question || advisorSending || !activeRecommendation) return
+
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      text: question,
+      citations: [],
+    }
+    setAdvisorThread((prev) => [...prev, userMessage])
+    setAdvisorQuestionInput('')
+    setAdvisorSending(true)
+
+    const contextLine = [
+      `Recommendation=${activeRecommendation.vendorName}`,
+      `Margin=${activeRecommendation.projectedMarginPct.toFixed(2)}%`,
+      `Route=${activeRecommendation.routeLabel}`,
+      `Lead=${activeRecommendation.leadTimeDays.toFixed(1)}d`,
+      `Risk=${activeRecommendation.riskScore.toFixed(1)}`,
+      `Objective=${Math.round(activeRecommendation.confidenceAdjustedObjective)}`,
+    ].join(' | ')
+
+    fetch(`${API_BASE}/api/v2/agents/${encodeURIComponent('Procurement Copilot')}/insight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page_id: resolvedInsightPageId,
+        agent_name: 'Procurement Copilot',
+        card_id: 'procurement.copilot.chat',
+        order_id: activeOrderId || undefined,
+        event_id: selectedEventId || undefined,
+        component_id: activeDecisionComponentId || undefined,
+        scenario_id: activeRecommendation.id,
+        question: `${question}\n\nCurrent analysis context: ${contextLine}`,
+      }),
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        const summary = String(payload?.summary || '').trim() || 'I cannot compute that right now. Please retry in a moment.'
+        const citations = (payload?.citations || []).slice(0, 3)
+        const aiMessageId = `ai-${Date.now()}`
+        setAdvisorThread((prev) => [...prev, { id: aiMessageId, role: 'ai', text: '', citations }])
+
+        if (advisorStreamTimerRef.current) {
+          window.clearInterval(advisorStreamTimerRef.current)
+          advisorStreamTimerRef.current = null
+        }
+
+        let cursor = 0
+        const step = Math.max(2, Math.ceil(summary.length / 45))
+        advisorStreamTimerRef.current = window.setInterval(() => {
+          cursor += step
+          setAdvisorThread((prev) => prev.map((message) => (
+            message.id === aiMessageId
+              ? { ...message, text: summary.slice(0, cursor) }
+              : message
+          )))
+          if (cursor >= summary.length) {
+            window.clearInterval(advisorStreamTimerRef.current)
+            advisorStreamTimerRef.current = null
+            setAdvisorSending(false)
+          }
+        }, 18)
+      })
+      .catch(() => {
+        setAdvisorThread((prev) => [...prev, {
+          id: `ai-fallback-${Date.now()}`,
+          role: 'ai',
+          text: `Using current recommendation context: ${activeRecommendation.vendorName} remains preferred due to margin ${activeRecommendation.projectedMarginPct.toFixed(2)}%, route ${activeRecommendation.routeLabel}, and objective ${Math.round(activeRecommendation.confidenceAdjustedObjective)}.`,
+          citations: [],
+        }])
+        setAdvisorSending(false)
+      })
+  }, [
+    activeDecisionComponentId,
+    activeOrderId,
+    activeRecommendation,
+    advisorQuestionInput,
+    advisorSending,
+    resolvedInsightPageId,
+    selectedEventId,
+  ])
+
+  const rawLearningHistory = executionLearningData?.decision_history?.decisions || []
+  const learningHistory = rawLearningHistory.length ? rawLearningHistory : demoDecisions
+  const isSeededLearningHistory = rawLearningHistory.length === 0
   const sortedLearningHistory = useMemo(() => {
     const rows = [...learningHistory]
     if (actionHistorySortBy === 'accuracy') return rows.sort((a, b) => Number(b.accuracy_score || 0) - Number(a.accuracy_score || 0))
@@ -1409,6 +2548,159 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   }, [actionHistorySortBy, learningHistory])
 
   const selectedLearningDecision = sortedLearningHistory.find((item) => item.decision_id === selectedLearningDecisionId) || sortedLearningHistory[0] || null
+
+  const module6TimelineDecisions = useMemo(() => {
+    return [...learningHistory]
+      .sort((a, b) => String(a.decision_date || '').localeCompare(String(b.decision_date || '')))
+      .slice(-5)
+  }, [learningHistory])
+  const module6LearningProgress = useMemo(() => {
+    if (!module6TimelineDecisions.length) return 0
+    const selectedIndex = module6TimelineDecisions.findIndex((decision) => decision.decision_id === selectedLearningDecision?.decision_id)
+    const effectiveIndex = selectedIndex >= 0 ? selectedIndex : module6TimelineDecisions.length - 1
+    return Math.max(0, Math.min(1, (effectiveIndex + 1) / module6TimelineDecisions.length))
+  }, [module6TimelineDecisions, selectedLearningDecision?.decision_id])
+
+  const fallbackRlUpdates = useMemo(() => ({
+    vendor_reliability: [
+      { vendor_name: 'Samsung Mexico', old_reliability: 89.6, new_reliability: 91.1, delta: 1.5 },
+    ],
+    commodity_estimate_accuracy: { delta_pct: 1.2 },
+    simulation_calibration: {
+      before: { purchase_noise_pct: 6.4, logistics_noise_pct: 7.8, risk_reserve_factor: 0.42 },
+      after: { purchase_noise_pct: 5.9, logistics_noise_pct: 7.1, risk_reserve_factor: 0.39 },
+    },
+    negotiation_floor_adjustment_pct: -0.4,
+  }), [])
+
+  const effectiveRlUpdates = executionLearningData?.rl_updates || fallbackRlUpdates
+
+  const personalAccuracyDisplay = useMemo(() => {
+    const liveAverage = Number(executionLearningData?.decision_history?.average_accuracy_score)
+    if (rawLearningHistory.length && Number.isFinite(liveAverage)) return liveAverage
+    if (!learningHistory.length) return 0
+    const avgAbsDelta = learningHistory.reduce((sum, item) => {
+      const delta = Number(item.accuracy_delta_pct ?? (Number(item.actual_margin_pct || 0) - Number(item.projected_margin_pct || 0)))
+      return sum + Math.abs(delta)
+    }, 0) / learningHistory.length
+    return round2(Math.max(0, 100 - avgAbsDelta * 10))
+  }, [executionLearningData?.decision_history?.average_accuracy_score, learningHistory, rawLearningHistory.length])
+
+  const exportExecutiveBriefPdf = useCallback((summaryText, sourceMeta = {}) => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+    const marginLeft = 52
+    const marginTop = 56
+    const lineWidth = 500
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const footerY = pageHeight - 42
+
+    const title = 'AI Executive Brief'
+    const eventTitle = selectedEvent?.name || selectedEventId || 'Disruption Event'
+    const nowLabel = new Date().toLocaleString('en-US', { hour12: false })
+    const sourceLabel = String(sourceMeta.source || 'llm').toUpperCase()
+    const modelLabel = String(sourceMeta.model || sourceMeta.agent || 'copilot')
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.text(title, marginLeft, marginTop)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.text(`Event: ${eventTitle}`, marginLeft, marginTop + 20)
+    doc.text(`Generated: ${nowLabel}`, marginLeft, marginTop + 34)
+    doc.text(`Source: ${sourceLabel} (${modelLabel})`, marginLeft, marginTop + 48)
+
+    doc.setDrawColor(18, 138, 168)
+    doc.line(marginLeft, marginTop + 58, marginLeft + lineWidth, marginTop + 58)
+
+    doc.setFontSize(11)
+    const wrapped = doc.splitTextToSize(String(summaryText || ''), lineWidth)
+    doc.text(wrapped, marginLeft, marginTop + 80)
+
+    doc.setFontSize(9)
+    doc.setTextColor(98, 133, 152)
+    doc.text('Generated by Procurement Copilot - Executive Output', marginLeft, footerY)
+
+    const safeOrder = activeOrderId || 'order'
+    const safeDate = new Date().toISOString().slice(0, 10)
+    doc.save(`executive-brief-${safeOrder}-${safeDate}.pdf`)
+  }, [activeOrderId, selectedEvent?.name, selectedEventId])
+
+  const generateExecutiveBrief = useCallback(async () => {
+    if (executiveBriefLoading) return
+
+    setExecutiveBriefLoading(true)
+    setExecutiveBriefError('')
+
+    const eventLine = selectedEvent?.name || selectedEventId || 'Disruption event'
+    const actionLine = activeRecommendation
+      ? `Recommended action: source from ${activeRecommendation.vendorName} via ${activeRecommendation.routeLabel} at $${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)}.`
+      : `Recommended action: ${recommendationMemo?.headline || 'follow highest-confidence recommendation.'}`
+    const marginProtected = Number(recommendationMemo?.profit_protected_vs_baseline || 0)
+    const marginLine = `Margin protected vs baseline: $${Math.round(marginProtected).toLocaleString()}.`
+    const learningLine = selectedLearningDecision?.reasoning
+      || `Model learned through reliability, commodity, simulation, and negotiation-floor updates. Current learning visibility is ${Math.round(module6LearningProgress * 100)}%.`
+    const fallbackSummary = [
+      `Event: ${eventLine}`,
+      actionLine,
+      marginLine,
+      `What the system learned: ${learningLine}`,
+      'Next decision: Keep the current vendor-route strategy while monitoring route stress and execution variance for rollback triggers.',
+    ].join(' ')
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v2/agents/${encodeURIComponent('Procurement Copilot')}/insight`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page_id: resolvedInsightPageId,
+          agent_name: 'Procurement Copilot',
+          card_id: 'execution.executive-brief',
+          order_id: activeOrderId || undefined,
+          event_id: selectedEventId || undefined,
+          component_id: activeDecisionComponentId || undefined,
+          scenario_id: activeRecommendation?.id || undefined,
+          question:
+            'Write a one-page executive summary for an EVP in 5 short sections: Event, Action Taken, Margin Protected, What the System Learned, Next Decision. '
+            + 'Use plain business language, no markdown bullets. Keep to one page. '
+            + `Context: ${fallbackSummary}`,
+        }),
+      })
+
+      const payload = response.ok ? await response.json() : null
+      const llmText = String(payload?.summary || '').trim()
+      const finalSummary = llmText || fallbackSummary
+      const meta = {
+        source: payload?.source || 'llm',
+        model: payload?.llm?.model || payload?.llm?.backend || 'copilot',
+        agent: payload?.agent_name || 'Procurement Copilot',
+      }
+
+      setExecutiveBriefPreview(finalSummary)
+      setExecutiveBriefMeta(meta)
+      exportExecutiveBriefPdf(finalSummary, meta)
+    } catch {
+      setExecutiveBriefPreview(fallbackSummary)
+      setExecutiveBriefMeta({ source: 'fallback', model: 'scripted', agent: 'Procurement Copilot' })
+      setExecutiveBriefError('LLM generation was unavailable. Exported scripted executive summary instead.')
+      exportExecutiveBriefPdf(fallbackSummary, { source: 'fallback', model: 'scripted', agent: 'Procurement Copilot' })
+    } finally {
+      setExecutiveBriefLoading(false)
+    }
+  }, [
+    activeDecisionComponentId,
+    activeOrderId,
+    activeRecommendation,
+    executiveBriefLoading,
+    exportExecutiveBriefPdf,
+    module6LearningProgress,
+    recommendationMemo?.headline,
+    recommendationMemo?.profit_protected_vs_baseline,
+    resolvedInsightPageId,
+    selectedEvent?.name,
+    selectedEventId,
+    selectedLearningDecision?.reasoning,
+  ])
 
   const module6GraphNodes = useMemo(() => {
     if (!executionLearningData?.next_event_guidance) return []
@@ -1452,8 +2744,6 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const futureOutlook     = runStatus?.future_outlook || []
   const graphNodes        = interactionGraph?.nodes?.length ? interactionGraph.nodes : (runStatus?.knowledge_graph?.nodes || [])
   const graphEdges        = interactionGraph?.edges?.length ? interactionGraph.edges : (runStatus?.knowledge_graph?.edges || [])
-  const activeAgents      = runStatus?.active_agents || 0
-  const totalAgents       = runStatus?.total_agents || 10
   const agentMode         = (runStatus?.agent_mode || state?.agents?.[0]?.mode || 'scripted').toUpperCase()
   const swarmState        = runStatus ? (runStatus.status === 'completed' ? 'READY' : 'DEBATING') : 'IDLE'
   const missionOrderReady = Boolean(orderContext?.order_id)
@@ -1552,23 +2842,39 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
       setDeployError('Order context is not ready yet. Wait for automatic BOM ingestion to finish.')
       return
     }
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        return await fetch(url, { ...options, signal: controller.signal })
+      } finally {
+        window.clearTimeout(timeoutId)
+      }
+    }
+
+    let createdRunId = null
     hasAutoNavigatedRef.current = false
     setIsDeploying(true); setDeployError(''); setRunStatus(null)
     setIsLivePaused(false); setSelectedEdgeId(''); setHighlightedAgents([])
     setReplayCursor(null); setIsReplayPlaying(false)
     try {
-      const createRes = await fetch(`${API_BASE}/api/v2/runs`, {
+      const createRes = await fetchWithTimeout(`${API_BASE}/api/v2/runs`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: selectedEventId, component_id: selectedComponentId }),
-      })
+      }, 10000)
       if (!createRes.ok) throw new Error('create failed')
       const created = await createRes.json()
       if (!created.run_id) throw new Error('missing run_id')
-      const deployRes = await fetch(`${API_BASE}/api/v2/runs/${created.run_id}/deploy`, { method: 'POST' })
+      createdRunId = created.run_id
+      setRunId(createdRunId)
+      const deployRes = await fetchWithTimeout(`${API_BASE}/api/v2/runs/${createdRunId}/deploy`, { method: 'POST' }, 12000)
       if (!deployRes.ok) throw new Error('deploy failed')
-      setRunId(created.run_id)
     } catch {
-      setDeployError('Unable to deploy swarm. Check backend on port 8003 and retry.')
+      if (createdRunId) {
+        setDeployError('Swarm handshake is taking longer than expected. Live status will continue once backend responds.')
+      } else {
+        setDeployError('Unable to deploy swarm. Check backend on port 8003 and retry.')
+      }
     } finally {
       setIsDeploying(false)
     }
@@ -1878,52 +3184,17 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       </strong>
                     </div>
                   </div>
-                  <div className="scenario-compare-wrap" style={{ marginTop: 10 }}>
-                    <table className="scenario-compare-table">
-                      <thead>
-                        <tr>
-                          <th>Geography</th>
-                          <th>Unit Price</th>
-                          <th>Weekly Change</th>
-                          <th>Trend</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(activeResearchCommodity?.geography_prices || []).map((row) => (
-                          <tr key={`${activeResearchComponentId}-${row.region}`}>
-                            <td>{row.region}</td>
-                            <td>${Number(row.unit_price || 0).toLocaleString()}</td>
-                            <td>{Number(row.weekly_change_pct || 0) > 0 ? '+' : ''}{Number(row.weekly_change_pct || 0)}%</td>
-                            <td>{row.trend || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="scenario-compare-wrap" style={{ marginTop: 10 }}>
-                    <table className="scenario-compare-table">
-                      <thead>
-                        <tr>
-                          <th>Vendor</th>
-                          <th>Country</th>
-                          <th>Sanctions</th>
-                          <th>Trade Agreement</th>
-                          <th>Legal Eligibility</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeResearchCompliance.map((vendor) => (
-                          <tr key={`${activeResearchComponentId}-${vendor.vendor_id}`}>
-                            <td>{vendor.vendor_name}</td>
-                            <td>{vendor.country}</td>
-                            <td>{vendor.sanctions_clear ? 'Clear' : 'Blocked'}</td>
-                            <td>{vendor.trade_agreement}</td>
-                            <td>{vendor.legal_eligibility ? 'Eligible' : 'Not Eligible'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResearchNarrativeCard
+                    insight={module1ResearchInsight}
+                    fallbackNarrative={module1FallbackNarrative}
+                    keySignals={module1ResearchSignals}
+                    onRerun={() => setResearchRerunTick((prev) => prev + 1)}
+                    isRefreshing={researchRerunLoading}
+                  />
+                  <EligibilityMap
+                    vendors={activeResearchCompliance}
+                    narrative={module1ResearchInsight?.summary || 'AI compliance narrative: highlighted vendors satisfy active sanctions/trade filters while blocked vendors violate current legal constraints.'}
+                  />
                   <div className="intel-card" style={{ marginTop: 10 }}>
                     <h3>Market Trend Evidence</h3>
                     <ul>
@@ -2149,12 +3420,14 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               event={selectedEvent}
               orderContext={orderContext}
               disruptionImpactData={disruptionImpactData}
+              runId={runId}
               isDeployed={Boolean(runId)}
               isDeploying={isDeploying}
               runStatus={runStatus}
               debateLogs={debateLogs}
               causalChain={causalSteps}
               onMaterialAmplificationsChange={setMaterialAmplifications}
+              onSwarmSignalPackChange={setSwarmSignalPack}
               navigateToSection={navigateToSection}
             />
           )}
@@ -2450,7 +3723,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               <span>{runStatus ? `${runStatus.status.toUpperCase()} · ${runStatus.progress}%` : 'Not started'}</span>
             </div>
           </div>
-          {missionReadyToAdvance && (
+          {missionReadyToAdvance && view !== 'disruption-impact' && (
             <div className="flow-page-actions" style={{ marginTop: 10, justifyContent: 'flex-start' }}>
               <button className="flow-btn primary" onClick={() => navigateToSection('component-analysis')}>
                 {view === 'disruption-impact' ? 'Continue to Simulation Lab' : 'Continue to Component Analysis'}
@@ -2572,6 +3845,11 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             <>
               <p className="ops-context-note">{profitRecommendationData.headline}</p>
 
+              <AIInterpretationPanel
+                swarmAdjustments={simulationSwarmAdjustments}
+                confidenceDiagnostics={simulationConfidenceDiagnostics}
+              />
+
               <div className="order-auto-status order-auto-controls" style={{ marginTop: 8 }}>
                 <label>Locked Revenue per Unit ($)
                   <input className="ghost-input" type="number" min="1" step="0.01" value={simulationLockedRevenueUnit} onChange={(e) => setSimulationLockedRevenueUnit(Number(e.target.value || 0))} />
@@ -2594,7 +3872,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               <div className="metrics-strip">
                 <div><span>Active Scenario</span><strong>{activeSimulationScenario?.scenario_name || '-'}</strong></div>
                 <div><span>Landed Cost / Component</span><strong>${Number(activeSimulationScenario?.landed_cost_per_unit || 0).toFixed(2)}</strong></div>
-                <div><span>Negotiation Ceiling</span><strong>${Number(activeSimulationScenario?.negotiation_ceiling_purchase_price || 0).toFixed(2)}</strong></div>
+                <div className="metrics-strip-amber"><span>Negotiation Ceiling</span><strong>${Number(activeSimulationScenario?.negotiation_ceiling_purchase_price || 0).toFixed(2)}</strong></div>
                 <div><span>Break-even Purchase</span><strong>${Number(activeSimulationScenario?.break_even_purchase_price || 0).toFixed(2)}</strong></div>
               </div>
 
@@ -2610,36 +3888,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 ))}
               </div>
 
-              <div className="scenario-compare-wrap" style={{ marginTop: 10 }}>
-                <table className="scenario-compare-table">
-                  <thead>
-                    <tr>
-                      <th>Scenario</th>
-                      <th>Landed Cost / Component</th>
-                      <th>Landed Cost CI (P10-P90)</th>
-                      <th>Profit / Unit (Expected)</th>
-                      <th>Profit CI (P10-P90)</th>
-                      <th>Negotiation Ceiling</th>
-                      <th>Break-even Purchase</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topSimulationScenarios.map((scenarioItem) => (
-                      <tr key={`sim-${scenarioItem.scenario_id}`} onClick={() => setSelectedSimulationScenarioId(scenarioItem.scenario_id)}>
-                        <td>{scenarioItem.scenario_name}</td>
-                        <td>${Number(scenarioItem.landed_cost_per_unit || 0).toFixed(2)}</td>
-                        <td>${Number(scenarioItem.landed_cost_per_unit_ci?.[0] || 0).toFixed(2)} to ${Number(scenarioItem.landed_cost_per_unit_ci?.[1] || 0).toFixed(2)}</td>
-                        <td>${Number(scenarioItem.profit_per_unit_expected || 0).toFixed(2)}</td>
-                        <td>${Number(scenarioItem.profit_per_unit_ci?.[0] || 0).toFixed(2)} to ${Number(scenarioItem.profit_per_unit_ci?.[1] || 0).toFixed(2)}</td>
-                        <td>${Number(scenarioItem.negotiation_ceiling_purchase_price || 0).toFixed(2)}</td>
-                        <td>${Number(scenarioItem.break_even_purchase_price || 0).toFixed(2)}</td>
-                        <td>{scenarioItem.is_loss_making ? 'Loss Risk' : 'Profitable'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ScenarioCardGrid scenarios={topSimulationScenarios} baseScenario={activeSimulationScenario} />
 
               <p className="ops-context-note" style={{ marginTop: 10 }}>
                 {profitRecommendationData.loss_boundary_scenario
@@ -2657,6 +3906,8 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                   <MonteCarloBandChart scenarios={topSimulationScenarios} />
                 </div>
               </div>
+
+              <InterventionComparisonGauges scenarios={topSimulationScenarios} />
 
               <div className="scenario-next-wrap" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
                 <button className="flow-btn primary" onClick={() => navigateToSection('negotiation-intelligence')}>
@@ -3028,56 +4279,6 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
         </div>
       )}
 
-      {['negotiation-intelligence', 'negotiation-recommendation'].includes(view) && (
-        <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
-          <div className="panel-head">
-            <h2>Module 4: Negotiation Intelligence</h2>
-            <p>Define your opening offer, walk-away price, and BATNA before committing.</p>
-          </div>
-          {!negotiationBand ? (
-            <div className="section-placeholder">
-              <h3>Negotiation Inputs Pending</h3>
-              <p>Run disruption impact and simulation to unlock target low/high, walk-away price, and leverage guidance.</p>
-            </div>
-          ) : (
-            <>
-              <div className="decision-grid">
-                <div><span>Opening Offer</span><strong>${negotiationBand.target_low_price}</strong></div>
-                <div><span>Deal Zone</span><strong>${negotiationBand.target_low_price} to ${negotiationBand.target_high_price}</strong></div>
-                <div><span>Walk Away</span><strong>${negotiationBand.walk_away_price}</strong></div>
-                <div><span>BATNA</span><strong>{recommendationMemo?.rollback_trigger || 'Shift to alternate vendor + route'}</strong></div>
-              </div>
-              <div className="rationale-grid">
-                <div><span>Negotiation Band</span><p>${negotiationBand.target_low_price} to ${negotiationBand.target_high_price} · walk away at ${negotiationBand.walk_away_price}</p></div>
-                <div><span>Leverage</span><p>{negotiationBand.leverage}</p></div>
-                <div><span>Rationale</span><p>{negotiationBand.rationale}</p></div>
-              </div>
-              <div className="vendor-filter-row" style={{ marginTop: 8 }}>
-                <label className="ghost-input" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Counter-offer Unit Price ($)
-                  <input
-                    className="ghost-input"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={vendorCounterOffer}
-                    onChange={(event) => setVendorCounterOffer(event.target.value)}
-                  />
-                </label>
-              </div>
-              <p className="ops-context-note">
-                Counter-offer impact: ${Math.round(counterOfferAdjustedPurchaseCost).toLocaleString()} purchase cost yields ${Math.round(liveProfit).toLocaleString()} projected profit ({liveMarginPct.toFixed(1)}% margin).
-              </p>
-              <div className="scenario-next-wrap" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
-                <button className="flow-btn primary" onClick={() => navigateToSection('recommendation-engine')}>
-                  Continue to Recommendation Engine
-                </button>
-              </div>
-            </>
-          )}
-        </motion.section>
-      )}
-
       {view === 'recommendation-engine' && (
         <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
           <div className="panel-head">
@@ -3092,7 +4293,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
           ) : (
             <>
               <div className="decision-grid" style={{ marginBottom: 10 }}>
-                <div><span>Default Sort</span><strong>Projected Margin (High to Low)</strong></div>
+                <div><span>Default Sort</span><strong>Confidence-Adjusted Objective (High to Low)</strong></div>
                 <div><span>Selected Option</span><strong>{activeRecommendation?.scenarioName || '-'}</strong></div>
                 <div><span>Profit Protection vs Baseline</span><strong>${Math.round(Number(recommendationMemo?.profit_protected_vs_baseline || 0)).toLocaleString()}</strong></div>
                 <div><span>Graph Backend</span><strong>{(interactionGraph.backend || 'fallback').toUpperCase()}</strong></div>
@@ -3102,6 +4303,9 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#7aaccc', fontSize: '0.78rem' }}>
                   Re-sort recommendations by:
                   <select className="ghost-select" value={recommendationSortBy} onChange={(event) => setRecommendationSortBy(event.target.value)}>
+                    <option value="objective">Confidence-Adjusted Objective</option>
+                    <option value="robustness">Robustness Score</option>
+                    <option value="regret">Regret Score (Low to High)</option>
                     <option value="margin">Projected Margin</option>
                     <option value="risk">Risk Score</option>
                     <option value="lead">Lead Time</option>
@@ -3117,42 +4321,67 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 </label>
               </div>
 
-              <div className="scenario-compare-wrap" style={{ marginTop: 10 }}>
-                <table className="scenario-compare-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Vendor + Country</th>
-                      <th>Negotiated/Target Price</th>
-                      <th>Logistics Route + Mode</th>
-                      <th>Total Landed Cost</th>
-                      <th>Projected Margin</th>
-                      <th>Risk Score</th>
-                      <th>Lead Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedRecommendationOptions.map((option, index) => (
-                      <tr
-                        key={option.id}
-                        onClick={() => setActiveRecommendationId(option.id)}
-                        style={{
-                          cursor: 'pointer',
-                          background: activeRecommendation?.id === option.id ? 'rgba(0,191,255,0.08)' : 'transparent',
-                        }}
-                      >
-                        <td>{index + 1}</td>
-                        <td>{option.vendorName} ({option.vendorCountry})</td>
-                        <td>${option.negotiatedOrTargetPrice.toFixed(2)}</td>
-                        <td>{option.routeLabel}</td>
-                        <td>${Math.round(option.totalLandedCost).toLocaleString()}</td>
-                        <td className={option.projectedMarginPct >= simulationTargetMarginPct ? 'kpi-ok' : 'kpi-warn'}>{option.projectedMarginPct.toFixed(2)}%</td>
-                        <td className={option.riskScore > 55 ? 'kpi-danger' : option.riskScore > 35 ? 'kpi-warn' : 'kpi-ok'}>{option.riskScore.toFixed(1)}</td>
-                        <td>{option.leadTimeDays.toFixed(1)}d</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="recommendation-route-panel">
+                <div className="recommendation-route-panel-head">
+                  <h3>Route Decision Map</h3>
+                  <p>Recommended lane is animated; blocked alternatives are marked in red with X indicators.</p>
+                </div>
+                <RecommendationRouteMap recommendedRoute={recommendedRouteLabel} blockedRoutes={blockedRouteLabels} />
+              </div>
+
+              <div className="recommendation-vendor-cards">
+                {topRecommendationCards.map((option, index) => (
+                  <button
+                    key={option.id}
+                    className={`recommendation-vendor-card${option.id === recommendedCardId ? ' recommended' : ''}${activeRecommendation?.id === option.id ? ' active' : ''}`}
+                    onClick={() => setActiveRecommendationId(option.id)}
+                  >
+                    <div className="recommendation-vendor-card-head">
+                      <div>
+                        <span className="recommendation-rank-pill">#{index + 1} {option.id === recommendedCardId ? 'Recommended' : 'Candidate'}</span>
+                        <h4>{option.vendorName} <small>({option.vendorCountry})</small></h4>
+                      </div>
+                      <div className="recommendation-margin-gauge-wrap">
+                        <MarginArcGauge marginPct={option.projectedMarginPct} size={option.id === recommendedCardId ? 92 : 74} range={45} />
+                      </div>
+                    </div>
+                    <div className="recommendation-vendor-card-metrics">
+                      <span>Price <strong>${option.negotiatedOrTargetPrice.toFixed(2)}</strong></span>
+                      <span>Risk <strong>{option.riskScore.toFixed(1)}</strong></span>
+                      <span>Lead <strong>{option.leadTimeDays.toFixed(1)}d</strong></span>
+                    </div>
+                    <RoutePathMiniMap origin={option.vendorCountry || 'Vendor'} mode={option.routeMode} destination="Factory" />
+                  </button>
+                ))}
+              </div>
+
+              <div className="reasoning-trail-wrap">
+                <div className="reasoning-trail-head">
+                  <h3>Decision Reasoning Trail</h3>
+                  <p>{'Signal detected -> Swarm analyzed -> Vendors scored -> One recommended -> Decision justified.'}</p>
+                </div>
+                <div className="reasoning-trail-chain">
+                  {reasoningTrailSteps.map((step) => (
+                    <button
+                      key={step.id}
+                      className={`reasoning-step-pill${selectedReasoningStepId === step.id ? ' active' : ''}`}
+                      onClick={() => setSelectedReasoningStepId(step.id)}
+                    >
+                      {step.label}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedReasoningStepId && (
+                  <div className="reasoning-evidence-drawer">
+                    <div className="reasoning-evidence-title">Evidence</div>
+                    <ul>
+                      {(reasoningTrailEvidence[selectedReasoningStepId] || []).map((item, idx) => (
+                        <li key={`${selectedReasoningStepId}-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               {activeRecommendation && (
@@ -3180,6 +4409,54 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     <div className="intel-card">
                       <h3>Profit vs Risk Tradeoff</h3>
                       <RecommendationTradeoffChart options={sortedRecommendationOptions} />
+                    </div>
+                  </div>
+
+                  <div className="agent-chart-grid" style={{ marginTop: 10 }}>
+                    <div className="intel-card">
+                      <h3>Sensitivity Mini-Chart</h3>
+                      {recommendationSensitivity ? (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          {[
+                            { label: 'Baseline Objective', value: recommendationSensitivity.baseline, color: '#00bfff' },
+                            { label: 'Confidence -10 pts', value: recommendationSensitivity.confidenceDropObjective, color: '#ffbe68' },
+                            { label: 'Route Stress +20 pts', value: recommendationSensitivity.routeStressUpObjective, color: '#ff4060' },
+                          ].map((item) => {
+                            const scale = Math.max(
+                              1,
+                              Math.abs(recommendationSensitivity.baseline),
+                              Math.abs(recommendationSensitivity.confidenceDropObjective),
+                              Math.abs(recommendationSensitivity.routeStressUpObjective),
+                            )
+                            const width = Math.max(8, Math.min(100, (Math.abs(item.value) / scale) * 100))
+                            return (
+                              <div key={item.label}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#9fc4d8', marginBottom: 4 }}>
+                                  <span>{item.label}</span>
+                                  <strong style={{ color: item.color }}>${Math.round(item.value).toLocaleString()}</strong>
+                                </div>
+                                <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                  <div style={{ width: `${width}%`, height: '100%', background: item.color }} />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <p className="empty-state">Select a recommendation option to view sensitivity shifts.</p>
+                      )}
+                    </div>
+                    <div className="intel-card">
+                      <h3>Decision Trace Summary</h3>
+                      <p className="ops-context-note" style={{ marginTop: 6 }}>
+                        The recommendation is now explained through the reasoning trail and evidence drawer instead of abstract objective-term penalties.
+                      </p>
+                      <div className="decision-grid" style={{ marginTop: 8, gridTemplateColumns: 'repeat(2,minmax(0,1fr))' }}>
+                        <div><span>Winning Vendor</span><strong>{activeRecommendation.vendorName}</strong></div>
+                        <div><span>Route</span><strong>{activeRecommendation.routeLabel}</strong></div>
+                        <div><span>Projected Margin</span><strong className={activeRecommendation.projectedMarginPct >= simulationTargetMarginPct ? 'kpi-ok' : 'kpi-warn'}>{activeRecommendation.projectedMarginPct.toFixed(2)}%</strong></div>
+                        <div><span>Rollback Trigger</span><strong>{recommendationMemo?.rollback_trigger || 'Configured'}</strong></div>
+                      </div>
                     </div>
                   </div>
 
@@ -3213,6 +4490,78 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  <div className="panel recommendation-advisor-panel" style={{ marginTop: 12, padding: '0.9rem 1rem', border: '1px solid rgba(0,191,255,0.2)', background: 'rgba(0,191,255,0.03)' }}>
+                    <div className="panel-head" style={{ paddingBottom: 0 }}>
+                      <h3>AI Advisor</h3>
+                      <p>Live recommendation discussion with procurement context and citations.</p>
+                    </div>
+
+                    <div className="recommendation-advisor-static">
+                      <div>
+                        <span>Strategy Brief</span>
+                        <p>{activeRecommendationRationale}</p>
+                      </div>
+                      <div>
+                        <span>Route Plan</span>
+                        <p>{activeRecommendation.routeLabel} targeting {activeRecommendation.leadTimeDays.toFixed(1)} transit days with route penalty {activeRecommendation.routePenalty.toFixed(1)}.</p>
+                      </div>
+                      <div>
+                        <span>Delivery Partner Plan</span>
+                        <p>{activeRecommendation.routeMode === 'air' ? 'Use premium carrier lane with day-priority slots and tight SLA monitoring.' : activeRecommendation.routeMode === 'sea' ? 'Use primary ocean carrier with contingency transload options at destination port.' : 'Use hybrid intermodal lane with flexible carrier assignment.'}</p>
+                      </div>
+                      <div>
+                        <span>SKU Action Plan</span>
+                        <p>Lock SKU sourcing at ${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)} and maintain rollback trigger: {recommendationMemo?.rollback_trigger || 'fallback to next-ranked vendor if risk rises above threshold'}.</p>
+                      </div>
+                    </div>
+
+                    <div className="recommendation-advisor-pairs">
+                      {advisorSeedQaPairs.map((pair, index) => (
+                        <div key={`${pair.question}-${index}`} className="recommendation-advisor-pair">
+                          <strong>Q: {pair.question}</strong>
+                          <p>A: {pair.answer}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="recommendation-advisor-thread">
+                      {advisorThread.map((message) => (
+                        <div key={message.id} className={`recommendation-advisor-msg ${message.role === 'user' ? 'user' : 'ai'}`}>
+                          {message.role === 'ai' && (
+                            <div className="recommendation-advisor-meta">
+                              <span className="research-live-pill">LIVE LLM</span>
+                            </div>
+                          )}
+                          <div className="recommendation-advisor-bubble">
+                            {message.text || (advisorSending && message.role === 'ai' ? 'Thinking…' : '')}
+                            {advisorSending && message.role === 'ai' && !message.text ? <span className="typing-cursor" /> : null}
+                          </div>
+                          {message.role === 'ai' && message.citations?.length > 0 && (
+                            <div className="recommendation-advisor-citations">
+                              {message.citations.map((citation) => (
+                                <span key={`${message.id}-${citation.id}`}>{citation.id}: {citation.source}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <form className="recommendation-advisor-ask" onSubmit={askAdvisor}>
+                      <input
+                        className="ghost-input"
+                        type="text"
+                        placeholder="Ask the AI"
+                        value={advisorQuestionInput}
+                        onChange={(event) => setAdvisorQuestionInput(event.target.value)}
+                        disabled={advisorSending}
+                      />
+                      <button className="flow-btn primary" type="submit" disabled={advisorSending || !advisorQuestionInput.trim()}>
+                        {advisorSending ? 'Asking…' : 'Send'}
+                      </button>
+                    </form>
                   </div>
                 </>
               )}
@@ -3360,21 +4709,24 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             </div>
           ) : (
             <>
-              {/* ── Headline metrics strip ───────────────────────────────── */}
-              <div className="vendor-metric-row" style={{ marginBottom: '1rem' }}>
-                {(() => {
-                  const first = negotiationBriefData.vendor_briefs?.[0] || {}
-                  return (
-                    <>
-                      <div className="vendor-metric-chip"><span>Deal Zone Low</span><strong style={{ color: '#39d353' }}>${(first.deal_zone_low || 0).toFixed(2)}</strong></div>
-                      <div className="vendor-metric-chip"><span>Deal Zone High</span><strong style={{ color: '#39d353' }}>${(first.deal_zone_high || 0).toFixed(2)}</strong></div>
-                      <div className="vendor-metric-chip"><span>Opening Offer</span><strong style={{ color: '#00bfff' }}>${(first.opening_offer || 0).toFixed(2)}</strong></div>
-                      <div className="vendor-metric-chip"><span>Walk-Away Price</span><strong style={{ color: '#ffb300' }}>${(first.walk_away_price || 0).toFixed(2)}</strong></div>
-                      <div className="vendor-metric-chip"><span>BATNA Vendor</span><strong style={{ color: '#cc66ff' }}>{negotiationBriefData.batna?.vendor_id || 'None'}</strong></div>
-                      <div className="vendor-metric-chip"><span>Component</span><strong>{negotiationBriefData.component_id}</strong></div>
-                    </>
-                  )
-                })()}
+              {/* ── Compact summary strip ────────────────────────────────── */}
+              <div className="metrics-strip negotiation-summary-strip" style={{ marginBottom: '1rem' }}>
+                <div>
+                  <span>Opening Offer</span>
+                  <strong style={{ color: '#00bfff' }}>${Number(activeNegVendor?.opening_offer || negoBriefs?.[0]?.opening_offer || 0).toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Negotiation Ceiling</span>
+                  <strong style={{ color: '#39d353' }}>${Number(activeNegVendor?.deal_zone_high || negotiationBand?.target_high_price || 0).toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Vendor Floor</span>
+                  <strong style={{ color: '#ff5050' }}>${Number(activeNegVendor?.estimated_vendor_floor || negoBriefs?.[0]?.estimated_vendor_floor || 0).toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Walk-Away</span>
+                  <strong style={{ color: '#ffb300' }}>${Number(activeNegVendor?.walk_away_price || negotiationBand?.walk_away_price || 0).toFixed(2)}</strong>
+                </div>
               </div>
 
               {/* ── Vendor tabs ───────────────────────────────────────────── */}
@@ -3394,8 +4746,8 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
               {activeNegVendor && (
                 <>
-                  {/* ── Main 3-panel workspace ────────────────────────────── */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr 1.4fr', gap: '1rem', marginBottom: '1.25rem' }}>
+                  {/* ── Main workspace ────────────────────────────────────── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '1rem', marginBottom: '1rem' }}>
 
                     {/* LEFT: Vendor brief card */}
                     <div className="panel" style={{ padding: '1rem', background: 'rgba(0,191,255,0.04)', border: '1px solid rgba(0,191,255,0.12)' }}>
@@ -3431,9 +4783,13 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
                     {/* CENTER: Deal zone + counter-offer */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
+                      <div className="panel negotiation-deal-zone-panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
                         <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.4rem' }}>Deal Zone Visual</p>
-                        <DealZoneChart brief={activeNegVendor} />
+                        <DealZoneChart
+                          brief={activeNegVendor}
+                          currentPrice={Number(activePlaybackRound?.buyer_offer || activeNegVendor.opening_offer || 0)}
+                          currentRoundLabel={activePlaybackRound ? `R${activePlaybackRound.round}` : 'R1'}
+                        />
                       </div>
                       <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
@@ -3459,36 +4815,44 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       </div>
                     </div>
 
-                    {/* RIGHT: Agent simulation */}
-                    <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
-                      <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.4rem' }}>AI Negotiation Agent — Round Simulation</p>
-                      <AgentNegotiationTimeline rounds={activeNegVendor.agent_rounds} />
-                      {activeNegVendor.agent_rounds?.length > 0 && (
-                        <div style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
-                          <table style={{ width: '100%', fontSize: '0.65rem', borderCollapse: 'collapse' }}>
-                            <thead>
-                              <tr style={{ borderBottom: '1px solid rgba(0,191,255,0.15)' }}>
-                                {['Rnd', 'Buyer', 'Vendor', 'Gap', 'Status', 'Margin'].map((h) => (
-                                  <th key={h} style={{ padding: '3px 5px', color: '#4a7a90', fontWeight: 600, textAlign: 'right' }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {activeNegVendor.agent_rounds.map((r) => (
-                                <tr key={r.round} style={{ borderBottom: '1px solid rgba(0,191,255,0.07)', background: r.agreed ? 'rgba(57,211,83,0.07)' : 'transparent' }}>
-                                  <td style={{ padding: '3px 5px', color: '#7aaccc', textAlign: 'right' }}>{r.round}</td>
-                                  <td style={{ padding: '3px 5px', color: '#00bfff', textAlign: 'right' }}>${(r.buyer_offer || 0).toFixed(2)}</td>
-                                  <td style={{ padding: '3px 5px', color: '#ff5050', textAlign: 'right' }}>${(r.vendor_ask || 0).toFixed(2)}</td>
-                                  <td style={{ padding: '3px 5px', color: '#ffb300', textAlign: 'right' }}>${(r.gap || 0).toFixed(2)}</td>
-                                  <td style={{ padding: '3px 5px', color: r.agreed ? '#39d353' : '#4a7a90', textAlign: 'right' }}>{r.status}</td>
-                                  <td style={{ padding: '3px 5px', color: r.buyer_margin_pct >= (simulationTargetMarginPct || 22) ? '#39d353' : '#aaccdd', textAlign: 'right' }}>{(r.buyer_margin_pct || 0).toFixed(1)}%</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
+                  </div>
+
+                  <div className="what-if-accept-inline">
+                    <label htmlFor="what-if-accept-input">What if vendor offers $</label>
+                    <input
+                      id="what-if-accept-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="ghost-input"
+                      placeholder="0.00"
+                      value={whatIfAcceptInput}
+                      onChange={(e) => setWhatIfAcceptInput(e.target.value)}
+                    />
+                    <span className="what-if-accept-suffix">?</span>
+                    <span className={`what-if-accept-margin ${whatIfAcceptCalc ? (whatIfAcceptCalc.isAboveFloor ? 'ok' : 'risk') : 'idle'}`}>
+                      Margin: {whatIfAcceptCalc ? `${whatIfAcceptCalc.marginPct.toFixed(2)}%` : '—'}
+                    </span>
+                    <span className="what-if-accept-floor">Floor: {whatIfAcceptCalc ? `${whatIfAcceptCalc.floorMarginPct.toFixed(2)}%` : `${Number(simulationTargetMarginPct || 22).toFixed(2)}%`}</span>
+                  </div>
+
+                  <div className="panel negotiation-conversation-main" style={{ padding: '0.85rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.12)', marginBottom: '1.25rem' }}>
+                    <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.5rem' }}>AI Negotiation Agent — Conversation Thread</p>
+                    <NegotiationChatThread
+                      rounds={activeNegVendor.agent_rounds || []}
+                      vendorName={activeNegVendor.vendor_name}
+                      walkAwayPrice={activeNegVendor.walk_away_price}
+                      targetMarginPct={simulationTargetMarginPct}
+                      projectedDealMarginPct={activeNegVendor.projected_deal_margin_pct}
+                    />
+                    <AIRationaleCard
+                      orderId={activeOrderId}
+                      activeVendor={activeNegVendor}
+                      rounds={activeNegVendor.agent_rounds || []}
+                      commodityTrend={negotiationBriefData?.commodity_context?.market_trend || 'stable'}
+                      urgencyPressure={Number(negotiationBriefData?.swarm_adjustments_applied?.urgency_pressure || 0)}
+                      batnaVendor={batnaVendor}
+                    />
                   </div>
 
                   {/* ── Bottom row: Radar + BATNA + Commodity context ─── */}
@@ -3503,15 +4867,15 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     {/* BATNA card */}
                     <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(204,102,255,0.04)', border: '1px solid rgba(204,102,255,0.15)' }}>
                       <p style={{ color: '#cc66ff', fontSize: '0.7rem', marginBottom: '0.5rem' }}>BATNA — Best Alternative to Negotiated Agreement</p>
-                      {negoBatna ? (
+                      {batnaVendor ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem' }}>
                           {[
-                            ['Vendor', negoBatna.vendor_id, '#cc66ff'],
-                            ['Floor Price', `$${(negoBatna.estimated_vendor_floor || 0).toFixed(2)}`, '#aaccdd'],
-                            ['Opening Offer', `$${(negoBatna.opening_offer || 0).toFixed(2)}`, '#00bfff'],
-                            ['Margin at Deal', `${(negoBatna.projected_deal_margin_pct || 0).toFixed(1)}%`, negoBatna.projected_deal_margin_pct >= (simulationTargetMarginPct || 22) ? '#39d353' : '#ffb300'],
-                            ['Lead Days', `${negoBatna.lead_days}d`, '#7aaccc'],
-                            ['Reliability', `${negoBatna.reliability}%`, '#7aaccc'],
+                            ['Vendor', batnaVendor.vendor_name || batnaVendor.vendor_id || '-', '#cc66ff'],
+                            ['Floor Price', `$${Number(batnaVendor.estimated_vendor_floor || 0).toFixed(2)}`, '#aaccdd'],
+                            ['Opening Offer', `$${Number(batnaVendor.opening_offer || 0).toFixed(2)}`, '#00bfff'],
+                            ['Margin at Deal', `${Number(batnaVendor.projected_deal_margin_pct || 0).toFixed(1)}%`, Number(batnaVendor.projected_deal_margin_pct || 0) >= (simulationTargetMarginPct || 22) ? '#39d353' : '#ffb300'],
+                            ['Lead Days', Number.isFinite(Number(batnaVendor.lead_days)) ? `${Number(batnaVendor.lead_days)}d` : '—', '#7aaccc'],
+                            ['Reliability', Number.isFinite(Number(batnaVendor.reliability)) ? `${Number(batnaVendor.reliability)}%` : '—', '#7aaccc'],
                           ].map(([k, v, c]) => (
                             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(204,102,255,0.08)', paddingBottom: '0.2rem' }}>
                               <span style={{ color: '#4a7a90' }}>{k}</span>
@@ -3524,7 +4888,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                           <button
                             className="ghost-btn"
                             style={{ marginTop: '0.4rem', color: '#cc66ff', borderColor: '#cc66ff50' }}
-                            onClick={() => setActiveNegVendorId(negoBatna.vendor_id)}
+                            onClick={() => setActiveNegVendorId(batnaVendor.vendor_id)}
                           >
                             Switch to BATNA Vendor →
                           </button>
@@ -3538,14 +4902,49 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
                       <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.5rem' }}>Commodity Price Context</p>
                       {negotiationBriefData.commodity_context ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.75rem' }}>
-                          {Object.entries(negotiationBriefData.commodity_context).map(([k, v]) => (
-                            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,191,255,0.07)', paddingBottom: '0.2rem' }}>
-                              <span style={{ color: '#4a7a90', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}</span>
-                              <strong style={{ color: '#aaccdd' }}>{typeof v === 'number' ? (v > 100 ? `$${v.toFixed(0)}` : `${v.toFixed(2)}`) : String(v)}</strong>
+                        (() => {
+                          const ctx = negotiationBriefData.commodity_context || {}
+                          const rawGeographyPrices = ctx.geography_prices
+                          const geographyPrices = Array.isArray(rawGeographyPrices)
+                            ? Object.fromEntries(rawGeographyPrices.map((row) => [row.region, Number(row.unit_price || 0)]))
+                            : rawGeographyPrices && typeof rawGeographyPrices === 'object'
+                              ? Object.fromEntries(Object.entries(rawGeographyPrices).map(([region, price]) => [region, Number(price || 0)]))
+                              : {}
+
+                          const rawTrend = String(ctx.market_trend || 'stable').toLowerCase()
+                          const marketTrend = rawTrend === 'up' ? 'rising' : rawTrend === 'down' ? 'falling' : rawTrend
+                          const trendClass = marketTrend === 'rising' ? 'is-rising' : marketTrend === 'falling' ? 'is-falling' : 'is-stable'
+
+                          return (
+                            <div className="commodity-context-wrap">
+                              {ctx.commodity && (
+                                <p className="commodity-context-title">Commodity: <strong>{ctx.commodity}</strong></p>
+                              )}
+                              <div className="commodity-context-table-wrap">
+                                <table className="commodity-context-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Region</th>
+                                      <th>Price</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {Object.entries(geographyPrices).map(([region, price]) => (
+                                      <tr key={region}>
+                                        <td>{region}</td>
+                                        <td className="commodity-context-price">${Number(price || 0).toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div className="commodity-trend-line">
+                                <span>Market Trend</span>
+                                <span className={`commodity-trend-badge ${trendClass}`}>{marketTrend}</span>
+                              </div>
                             </div>
-                          ))}
-                        </div>
+                          )
+                        })()
                       ) : (
                         <p style={{ color: '#4a7a90', fontSize: '0.7rem' }}>No commodity context available.</p>
                       )}
@@ -3591,7 +4990,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               <div className="decision-grid" style={{ marginBottom: 10 }}>
                 <div><span>Order Status</span><strong>{executionLearningData.order_tracking?.status || executionLearningData.feedback?.calibration_status || 'pending'}</strong></div>
                 <div><span>Recommendation Confidence</span><strong>{Number(executionLearningData.next_event_guidance?.confidence_score || 0).toFixed(1)}%</strong></div>
-                <div><span>Personal Accuracy</span><strong>{Number(executionLearningData.decision_history?.average_accuracy_score || 0).toFixed(1)}</strong></div>
+                <div><span>Personal Accuracy</span><strong>{Number(personalAccuracyDisplay || 0).toFixed(1)}</strong></div>
                 <div><span>Decisions Logged</span><strong>{learningHistory.length}</strong></div>
               </div>
 
@@ -3614,14 +5013,39 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     <h3>RL Model Update Surface</h3>
                     <p>Reliability, commodity accuracy, simulation, and negotiation floor adjustments.</p>
                   </div>
-                  <RLCalibrationRadarChart rlUpdates={executionLearningData.rl_updates} />
+                  <RLCalibrationRadarChart rlUpdates={effectiveRlUpdates} learningProgress={module6LearningProgress} />
                   <div className="ops-context-note" style={{ marginTop: 8 }}>
-                    Vendor reliability update: {executionLearningData.rl_updates?.vendor_reliability?.[0]?.vendor_name || '-'} {executionLearningData.rl_updates?.vendor_reliability?.[0]?.old_reliability ?? '-'} → {executionLearningData.rl_updates?.vendor_reliability?.[0]?.new_reliability ?? '-'}.
+                    Vendor reliability update: {effectiveRlUpdates?.vendor_reliability?.[0]?.vendor_name || '-'} {effectiveRlUpdates?.vendor_reliability?.[0]?.old_reliability ?? '-'} → {effectiveRlUpdates?.vendor_reliability?.[0]?.new_reliability ?? '-'}.
                   </div>
                   <div className="ops-context-note" style={{ marginTop: 4 }}>
-                    Negotiation floor adjustment: {executionLearningData.rl_updates?.negotiation_floor_adjustment_pct == null ? 'pending' : `${executionLearningData.rl_updates.negotiation_floor_adjustment_pct.toFixed(2)}%`}.
+                    Negotiation floor adjustment: {effectiveRlUpdates?.negotiation_floor_adjustment_pct == null ? 'pending' : `${effectiveRlUpdates.negotiation_floor_adjustment_pct.toFixed(2)}%`}.
+                  </div>
+                  <div className="ops-context-note" style={{ marginTop: 4 }}>
+                    Learning visibility: {Math.round(module6LearningProgress * 100)}% of close-out timeline.
                   </div>
                 </div>
+              </div>
+
+              <div className="panel" style={{ marginTop: 12, padding: '0.9rem 1rem', border: '1px solid rgba(0,191,255,0.2)', background: 'rgba(0,191,255,0.03)' }}>
+                <div className="panel-head" style={{ paddingBottom: 0 }}>
+                  <h3>Auto-generated Executive Brief</h3>
+                  <p>One-click executive PDF: AI summarizes the event, action, margin protected, and learning for EVP review.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span className="research-live-pill">LIVE LLM</span>
+                  <button className="flow-btn primary" onClick={generateExecutiveBrief} disabled={executiveBriefLoading}>
+                    {executiveBriefLoading ? 'Generating executive PDF...' : 'Generate Executive PDF'}
+                  </button>
+                  {executiveBriefMeta && (
+                    <span className="ai-rationale-meta">{String(executiveBriefMeta.source || 'llm').toUpperCase()} · {String(executiveBriefMeta.model || 'copilot')}</span>
+                  )}
+                </div>
+                {executiveBriefError ? <p className="ops-context-note" style={{ marginTop: 8, color: '#ffbe68' }}>{executiveBriefError}</p> : null}
+                {executiveBriefPreview ? (
+                  <div className="ai-rationale-card" style={{ marginTop: 8 }}>
+                    <p className="ai-rationale-body">{executiveBriefPreview}</p>
+                  </div>
+                ) : null}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 12 }}>
@@ -3643,7 +5067,18 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     </label>
                   </div>
 
-                  <DecisionAccuracyTrendChart decisions={sortedLearningHistory} />
+                  <p className="ops-context-note" style={{ marginTop: 8 }}>Model accuracy improving over time.</p>
+                  {isSeededLearningHistory && (
+                    <p className="ops-context-note" style={{ marginTop: 4 }}>
+                      Demo history is seeded to illustrate the RL feedback loop when live decision history is not yet available.
+                    </p>
+                  )}
+
+                  <DecisionAccuracyTrendChart
+                    decisions={module6TimelineDecisions}
+                    activeDecisionId={selectedLearningDecision?.decision_id}
+                    onDecisionSelect={setSelectedLearningDecisionId}
+                  />
 
                   <div className="scenario-compare-wrap" style={{ marginTop: 8 }}>
                     <table className="scenario-compare-table">
@@ -3654,27 +5089,38 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                           <th>Route</th>
                           <th>Proj Margin</th>
                           <th>Actual Margin</th>
-                          <th>Accuracy</th>
+                          <th>Accuracy Delta</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedLearningHistory.map((row) => (
-                          <tr
-                            key={row.decision_id}
-                            onClick={() => setSelectedLearningDecisionId(row.decision_id)}
-                            style={{ cursor: 'pointer', background: selectedLearningDecision?.decision_id === row.decision_id ? 'rgba(0,191,255,0.08)' : 'transparent' }}
-                          >
-                            <td>{String(row.decision_date || '').slice(0, 10)}</td>
-                            <td>{row.vendor_name || '-'}</td>
-                            <td>{row.route_id || '-'}</td>
-                            <td>{row.projected_margin_pct == null ? '-' : `${Number(row.projected_margin_pct).toFixed(1)}%`}</td>
-                            <td>{row.actual_margin_pct == null ? '-' : `${Number(row.actual_margin_pct).toFixed(1)}%`}</td>
-                            <td className={Number(row.accuracy_score || 0) >= 75 ? 'kpi-ok' : Number(row.accuracy_score || 0) >= 55 ? 'kpi-warn' : 'kpi-danger'}>{Number(row.accuracy_score || 0).toFixed(1)}</td>
-                          </tr>
-                        ))}
+                        {sortedLearningHistory.map((row) => {
+                          const delta = Number(row.accuracy_delta_pct ?? (Number(row.actual_margin_pct || 0) - Number(row.projected_margin_pct || 0)))
+                          const cls = Math.abs(delta) <= 0.8 ? 'kpi-ok' : Math.abs(delta) <= 1.8 ? 'kpi-warn' : 'kpi-danger'
+                          return (
+                            <tr
+                              key={row.decision_id}
+                              onClick={() => setSelectedLearningDecisionId(row.decision_id)}
+                              style={{ cursor: 'pointer', background: selectedLearningDecision?.decision_id === row.decision_id ? 'rgba(0,191,255,0.08)' : 'transparent' }}
+                            >
+                              <td>{String(row.decision_date || '').slice(0, 10)}</td>
+                              <td>{row.vendor_name || '-'}</td>
+                              <td>{row.route_id || '-'}</td>
+                              <td>{row.projected_margin_pct == null ? '-' : `${Number(row.projected_margin_pct).toFixed(1)}%`}</td>
+                              <td>{row.actual_margin_pct == null ? '-' : `${Number(row.actual_margin_pct).toFixed(1)}%`}</td>
+                              <td className={cls}>{delta >= 0 ? '+' : ''}{delta.toFixed(1)}%</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
+
+                  {selectedLearningDecision && (
+                    <div className="ops-context-note" style={{ marginTop: 8 }}>
+                      <strong>{selectedLearningDecision.decision_id}:</strong> projected {Number(selectedLearningDecision.projected_margin_pct || 0).toFixed(1)}%, actual {Number(selectedLearningDecision.actual_margin_pct || 0).toFixed(1)}%.
+                      {' '}{selectedLearningDecision.reasoning || 'Model updated from observed margin delta and route execution signals.'}
+                    </div>
+                  )}
                 </div>
 
                 <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>

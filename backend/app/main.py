@@ -77,6 +77,32 @@ class ScenarioSimulationRequest(BaseModel):
     assumptions: ScenarioAssumptions = Field(default_factory=ScenarioAssumptions)
 
 
+class SwarmRouteSignal(BaseModel):
+    route: str
+    risk: str = "WATCH"
+    keywords: List[str] = Field(default_factory=list)
+    severity: float = 0.0
+
+
+class SwarmJudgeSignal(BaseModel):
+    consensus_score: float = 7.0
+    confidence: int = 75
+    dissent: Optional[str] = None
+    contradiction_count: int = 0
+    evidence_strength: int = 75
+    dissent_summary: Optional[str] = None
+
+
+class SwarmSignalsRequest(BaseModel):
+    run_id: Optional[str] = None
+    event_id: Optional[str] = None
+    material_amplifications: Dict[str, float] = Field(default_factory=dict)
+    route_signals: List[SwarmRouteSignal] = Field(default_factory=list)
+    blocked_corridors: List[str] = Field(default_factory=list)
+    judge: SwarmJudgeSignal = Field(default_factory=SwarmJudgeSignal)
+    agent_completion_pct: float = 0.0
+
+
 class VendorIntelRequest(BaseModel):
     component_id: str = "gpu-display-chip"
     search: str = ""
@@ -1262,6 +1288,21 @@ class ExecutionActionRequest(BaseModel):
     actions: List[str] = Field(default_factory=lambda: ["purchase_order", "freight_booking", "customer_notification"])
 
 
+class NegotiationRationaleRequest(BaseModel):
+    negotiation_result: str = "deal"  # deal | no-deal
+    buyer_vendor_name: str = "Buyer"
+    counterparty_vendor_name: str = "Vendor"
+    final_buyer_price: float = 0.0
+    final_vendor_price: float = 0.0
+    commodity_trend: str = "stable"
+    urgency_pressure_score: float = 0.0
+    vendor_floor_price: Optional[float] = None
+    walk_away_price: Optional[float] = None
+    batna_vendor_name: Optional[str] = None
+    batna_lead_days: Optional[float] = None
+    batna_margin_pct: Optional[float] = None
+
+
 def _event_severity_multiplier(event_id: str) -> float:
     severity = _find_event(event_id).get("severity", "HIGH")
     return {"LOW": 1.0, "MEDIUM": 1.08, "HIGH": 1.2, "CRITICAL": 1.35}.get(severity, 1.2)
@@ -1442,6 +1483,204 @@ def _component_driver_map(component_id: str) -> Dict[str, List[str]]:
         },
     }
     return drivers.get(component_id, {"route_closures": ["Trans-Pacific lanes"], "commodity_spikes": ["Freight index +20%"]})
+
+
+def _default_swarm_signal_pack(event_id: str) -> Dict[str, Any]:
+    return {
+        "event_id": event_id,
+        "run_id": None,
+        "material_amplifications": {},
+        "route_signals": [],
+        "blocked_corridors": [],
+        "judge": {
+            "consensus_score": 7.0,
+            "confidence": 75,
+            "dissent": None,
+            "contradiction_count": 0,
+            "evidence_strength": 75,
+            "dissent_summary": None,
+        },
+        "agent_completion_pct": 0.0,
+        "derived": {
+            "material_pressure_pct": 0.0,
+            "route_stress_pct": 10.0,
+            "dissent_penalty": 0.05,
+        },
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _normalize_swarm_signal_pack(raw: Dict[str, Any], event_id: str) -> Dict[str, Any]:
+    pack = _default_swarm_signal_pack(event_id)
+    if not isinstance(raw, dict):
+        return pack
+
+    material_raw = raw.get("material_amplifications") or {}
+    material_amplifications: Dict[str, float] = {}
+    if isinstance(material_raw, dict):
+        for key, value in material_raw.items():
+            if not isinstance(key, str):
+                continue
+            try:
+                material_amplifications[key] = round(max(0.0, float(value)), 2)
+            except (TypeError, ValueError):
+                continue
+
+    route_signals_raw = raw.get("route_signals") or []
+    route_signals: List[Dict[str, Any]] = []
+    for signal in route_signals_raw:
+        if not isinstance(signal, dict):
+            continue
+        route = str(signal.get("route") or "").strip()
+        if not route:
+            continue
+        risk = str(signal.get("risk") or "WATCH").upper()
+        if risk not in {"WATCH", "DELAY", "DIVERT", "BLOCKED", "DEGRADED", "ACTIVE", "COST+"}:
+            risk = "WATCH"
+        severity_raw = signal.get("severity", 0.0)
+        try:
+            severity = max(0.0, min(100.0, float(severity_raw)))
+        except (TypeError, ValueError):
+            severity = 0.0
+        keywords_raw = signal.get("keywords") or []
+        keywords = [str(item).strip().lower() for item in keywords_raw if str(item).strip()]
+        route_signals.append({
+            "route": route,
+            "risk": risk,
+            "keywords": keywords,
+            "severity": round(severity, 2),
+        })
+
+    blocked_raw = raw.get("blocked_corridors") or []
+    blocked_corridors = sorted({
+        str(item).strip().lower()
+        for item in blocked_raw
+        if isinstance(item, str) and item.strip()
+    })
+
+    judge_raw = raw.get("judge") or {}
+    if not isinstance(judge_raw, dict):
+        judge_raw = {}
+    consensus = judge_raw.get("consensus_score", 7.0)
+    confidence = judge_raw.get("confidence", 75)
+    dissent = judge_raw.get("dissent")
+    contradiction_count = judge_raw.get("contradiction_count", 0)
+    evidence_strength = judge_raw.get("evidence_strength", confidence)
+    dissent_summary = judge_raw.get("dissent_summary")
+    try:
+        consensus_score = max(1.0, min(10.0, float(consensus)))
+    except (TypeError, ValueError):
+        consensus_score = 7.0
+    try:
+        confidence_score = max(0, min(100, int(confidence)))
+    except (TypeError, ValueError):
+        confidence_score = 75
+    dissent_text = None
+    if isinstance(dissent, str) and dissent.strip():
+        dissent_text = dissent.strip()
+
+    try:
+        contradiction_count_num = max(0, min(10, int(contradiction_count)))
+    except (TypeError, ValueError):
+        contradiction_count_num = 1 if dissent_text else 0
+
+    try:
+        evidence_strength_num = max(0, min(100, int(evidence_strength)))
+    except (TypeError, ValueError):
+        evidence_strength_num = confidence_score
+
+    dissent_summary_text = None
+    if isinstance(dissent_summary, str) and dissent_summary.strip():
+        dissent_summary_text = dissent_summary.strip()
+    elif dissent_text:
+        dissent_summary_text = dissent_text
+
+    risk_weight = {"WATCH": 15.0, "DELAY": 40.0, "DIVERT": 65.0, "BLOCKED": 90.0, "DEGRADED": 62.0, "ACTIVE": 18.0, "COST+": 52.0}
+    route_stress_candidates = []
+    for signal in route_signals:
+        base = risk_weight.get(signal["risk"], 15.0)
+        route_stress_candidates.append(max(base, signal.get("severity", 0.0)))
+    route_stress_pct = round(sum(route_stress_candidates) / max(1, len(route_stress_candidates)), 2) if route_stress_candidates else 10.0
+
+    material_pressure_pct = 0.0
+    if material_amplifications:
+        material_pressure_pct = round(sum(material_amplifications.values()) / max(1, len(material_amplifications)), 2)
+
+    dissent_penalty = 0.0
+    if dissent_text:
+        dissent_penalty = 0.12
+    elif consensus_score < 6.0:
+        dissent_penalty = 0.08
+    elif confidence_score < 65:
+        dissent_penalty = 0.05
+    else:
+        dissent_penalty = 0.02
+
+    try:
+        completion_pct = max(0.0, min(100.0, float(raw.get("agent_completion_pct", 0.0))))
+    except (TypeError, ValueError):
+        completion_pct = 0.0
+
+    pack.update({
+        "event_id": str(raw.get("event_id") or event_id),
+        "run_id": raw.get("run_id"),
+        "material_amplifications": material_amplifications,
+        "route_signals": route_signals,
+        "blocked_corridors": blocked_corridors,
+        "judge": {
+            "consensus_score": round(consensus_score, 2),
+            "confidence": confidence_score,
+            "dissent": dissent_text,
+            "contradiction_count": contradiction_count_num,
+            "evidence_strength": evidence_strength_num,
+            "dissent_summary": dissent_summary_text,
+        },
+        "agent_completion_pct": round(completion_pct, 1),
+        "derived": {
+            "material_pressure_pct": material_pressure_pct,
+            "route_stress_pct": route_stress_pct,
+            "dissent_penalty": round(dissent_penalty, 3),
+        },
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    })
+    return pack
+
+
+def _resolve_swarm_signal_pack(order_context: Dict[str, Any], event_id: str) -> Dict[str, Any]:
+    existing = order_context.get("swarm_signal_pack")
+    normalized = _normalize_swarm_signal_pack(existing if isinstance(existing, dict) else {}, event_id)
+    order_context["swarm_signal_pack"] = normalized
+    return normalized
+
+
+def _route_signal_penalty(route: Dict[str, Any], route_signals: List[Dict[str, Any]]) -> float:
+    if not route_signals:
+        return 0.0
+
+    route_text_parts = [
+        str(route.get("route_id") or ""),
+        str(route.get("mode") or ""),
+        " ".join(str(item) for item in (route.get("corridors") or [])),
+        " ".join(str(item) for item in (route.get("nodes") or [])),
+    ]
+    route_text = " ".join(route_text_parts).lower().replace("-", " ")
+
+    risk_weight = {"WATCH": 2.0, "DELAY": 5.5, "DIVERT": 9.0, "BLOCKED": 15.0, "DEGRADED": 8.0, "ACTIVE": 1.8, "COST+": 6.5}
+    penalty = 0.0
+    for signal in route_signals:
+        keywords = [str(item).strip().lower().replace("-", " ") for item in (signal.get("keywords") or []) if str(item).strip()]
+        route_name = str(signal.get("route") or "").strip().lower().replace("-", " ")
+        match = False
+        if route_name and route_name in route_text:
+            match = True
+        elif keywords and any(keyword in route_text for keyword in keywords):
+            match = True
+        if not match:
+            continue
+        severity = float(signal.get("severity") or 0.0)
+        penalty += risk_weight.get(signal.get("risk", "WATCH"), 2.0) + (severity * 0.08)
+
+    return round(max(0.0, penalty), 2)
 
 
 def _sku_margin_profile(sku_id: str) -> Dict[str, Any]:
@@ -2115,6 +2354,12 @@ def _profit_recommendation(
     target_margin = max(1.0, min(65.0, float(target_margin_pct or 22.0)))
     locked_revenue_per_unit = float(locked_revenue_unit or sku_profile["unit_revenue"])
     fixed_conversion_per_unit = float(sku_profile["fixed_conversion_cost"])
+    swarm_signals = _resolve_swarm_signal_pack(order_context, active_event_id)
+    swarm_material_factor = max(0.0, float((swarm_signals.get("material_amplifications") or {}).get(component_id, 0.0)) / 100.0)
+    swarm_route_stress = max(0.0, float((swarm_signals.get("derived") or {}).get("route_stress_pct", 0.0)) / 100.0)
+    swarm_dissent_penalty = max(0.0, float((swarm_signals.get("derived") or {}).get("dissent_penalty", 0.0)))
+    swarm_confidence = max(0.0, min(1.0, float((swarm_signals.get("judge") or {}).get("confidence", 75)) / 100.0))
+    swarm_consensus = max(0.1, min(1.0, float((swarm_signals.get("judge") or {}).get("consensus_score", 7.0)) / 10.0))
 
     total_base_bom_per_unit = sum(
         _component_base_cost(row["component_id"]) * int(row.get("qty_per_unit", 1))
@@ -2131,7 +2376,7 @@ def _profit_recommendation(
     cheapest_vendor = min(vendors, key=lambda vendor: _historical_vendor_market(component_id, vendor["vendor_id"])["avg_price"])
 
     def pick_route(vendor_id: str, mode: Optional[str] = None) -> Dict[str, Any]:
-        options = _choose_routes(vendor_id, [], "balanced")
+        options = _choose_routes(vendor_id, swarm_signals.get("blocked_corridors", []), "balanced")
         if mode and mode != "auto":
             filtered = [route for route in options if route.get("mode") == mode]
             if filtered:
@@ -2216,11 +2461,16 @@ def _profit_recommendation(
         idx = int(round((len(sorted_values) - 1) * q))
         return float(sorted_values[max(0, min(idx, len(sorted_values) - 1))])
 
+    def _clamp(value: float, low: float, high: float) -> float:
+        return max(low, min(high, value))
+
     scenarios: List[Dict[str, Any]] = []
     for blueprint in scenario_blueprints:
         vendor = blueprint["vendor"]
         route = pick_route(vendor["vendor_id"], blueprint["mode"])
         freight_unit_base = max(2.0, float(route.get("cost_per_pallet", 5200.0)) / 250.0)
+        route_penalty = _route_signal_penalty(route, swarm_signals.get("route_signals", []))
+        route_penalty_factor = 1.0 + (route_penalty / 100.0)
 
         purchase_samples: List[float] = []
         freight_samples: List[float] = []
@@ -2230,12 +2480,16 @@ def _profit_recommendation(
         landed_component_samples: List[float] = []
         profit_per_unit_samples: List[float] = []
 
-        purchase_mean = max(0.1, base_purchase * (1.0 + blueprint["purchase_shift"]))
-        freight_mean = max(0.1, freight_unit_base * (1.0 + blueprint["freight_shift"]))
+        material_push = swarm_material_factor * (1.2 if blueprint["scenario_id"] in {"stressed", "worst-case"} else 0.75)
+        purchase_mean_base = max(0.1, base_purchase * (1.0 + blueprint["purchase_shift"]))
+        freight_mean_base = max(0.1, freight_unit_base * (1.0 + blueprint["freight_shift"]))
+        noise_base = float(blueprint["noise"])
+        purchase_mean = max(0.1, base_purchase * (1.0 + blueprint["purchase_shift"] + material_push))
+        freight_mean = max(0.1, freight_unit_base * (1.0 + blueprint["freight_shift"])) * route_penalty_factor * (1.0 + swarm_route_stress * 0.35)
         tariff_mean = max(0.0, base_tariff_rate * (1.0 + blueprint["tariff_shift"]))
         customs_rate = max(0.0, float(blueprint["customs_rate"]))
         handling_mean = max(0.1, float(blueprint["handling_unit"]))
-        noise = float(blueprint["noise"])
+        noise = noise_base * (1.0 + swarm_dissent_penalty * 0.9 + (1.0 - swarm_confidence) * 0.45)
 
         for _ in range(normalized_runs):
             purchase_u = _normal_non_negative(purchase_mean, max(0.01, purchase_mean * noise))
@@ -2289,11 +2543,51 @@ def _profit_recommendation(
         fixed_conversion_total = round(fixed_conversion_per_unit * order_qty, 2)
         expected_profit_total = round(profit_per_unit_expected * order_qty, 2)
 
-        execution_risk = round(min(95.0, vendor.get("geo_risk", 25) * 0.55 + route.get("risk", 30.0) * 0.45 + (0 if blueprint["scenario_id"] in {"optimistic", "base"} else 8)), 1)
-        fulfillment_confidence = round(max(45.0, min(99.0, 100.0 - execution_risk * 0.55 - (15.0 if blueprint["scenario_id"] == "worst-case" else 0.0))), 1)
+        execution_risk_base = round(min(95.0, vendor.get("geo_risk", 25) * 0.55 + route.get("risk", 30.0) * 0.45 + (0 if blueprint["scenario_id"] in {"optimistic", "base"} else 8)), 1)
+        fulfillment_confidence_base = round(max(45.0, min(99.0, 100.0 - execution_risk_base * 0.55 - (15.0 if blueprint["scenario_id"] == "worst-case" else 0.0))), 1)
+        execution_risk = round(min(95.0, vendor.get("geo_risk", 25) * 0.55 + route.get("risk", 30.0) * 0.45 + route_penalty * 0.4 + swarm_dissent_penalty * 20.0 + (0 if blueprint["scenario_id"] in {"optimistic", "base"} else 8)), 1)
+        fulfillment_confidence = round(max(45.0, min(99.0, 100.0 - execution_risk * 0.55 - route_penalty * 0.25 - swarm_dissent_penalty * 12.0 + (swarm_consensus - 0.7) * 8.0 - (15.0 if blueprint["scenario_id"] == "worst-case" else 0.0))), 1)
         margin_volatility = round(max(2.0, (profit_ci[1] - profit_ci[0]) / max(abs(profit_per_unit_expected) + 1.0, 1.0) * 18.0), 1)
-        scenario_score = round((expected_profit_total / 1000000.0) + fulfillment_confidence * 0.025 - execution_risk * 0.04 - margin_volatility * 0.06, 2)
+        scenario_score = round((expected_profit_total / 1000000.0) + fulfillment_confidence * 0.025 - execution_risk * 0.04 - margin_volatility * 0.06 - route_penalty * 0.008 - swarm_dissent_penalty * 0.65 + (swarm_confidence - 0.7) * 0.4, 2)
         gross_margin_pct = round((profit_per_unit_expected / max(locked_revenue_per_unit, 0.01)) * 100.0, 2)
+
+        # Ranking-critical risk-adjusted objective terms are computed server-side for deterministic ordering across clients.
+        confidence_factor = _clamp(float((swarm_signals.get("judge") or {}).get("confidence", 75)) / 100.0, 0.45, 1.0)
+        base_regret_score = round(max(0.0, profit_per_unit_expected - profit_ci[0]), 2)
+        route_penalty_contribution_regret = round(route_penalty * 0.05, 2)
+        regret_score = round(base_regret_score + route_penalty_contribution_regret, 2)
+        robustness_score = round(
+            _clamp(
+                100.0
+                - execution_risk * 0.65
+                - route_penalty * 1.2
+                - (swarm_route_stress * 100.0) * 0.2
+                - swarm_dissent_penalty * 90.0
+                + max(0.0, fulfillment_confidence - 70.0) * 0.35,
+                0.0,
+                100.0,
+            ),
+            2,
+        )
+        explainability_score = round(
+            _clamp(
+                float((swarm_signals.get("judge") or {}).get("confidence", 75)) * 0.55
+                + (16.0 if blueprint["tradeoff"] else 0.0)
+                + (6.0 if route_penalty > 0.0 else 0.0)
+                + (5.0 if vendor.get("name") else 0.0),
+                0.0,
+                100.0,
+            ),
+            2,
+        )
+        profit_term = round(expected_profit_total * confidence_factor, 2)
+        uncertainty_penalty = round(regret_score * order_qty * 1.15, 2)
+        robustness_penalty = round(max(0.0, 100.0 - robustness_score) * 220.0, 2)
+        route_exposure_penalty = round(route_penalty * order_qty * 32.0, 2)
+        confidence_adjusted_objective = round(
+            profit_term - uncertainty_penalty - robustness_penalty - route_exposure_penalty,
+            2,
+        )
 
         scenarios.append(
             {
@@ -2316,6 +2610,34 @@ def _profit_recommendation(
                 "execution_risk": execution_risk,
                 "margin_volatility": margin_volatility,
                 "scenario_score": scenario_score,
+                "swarm_route_penalty": route_penalty,
+                "confidence_adjusted_objective": confidence_adjusted_objective,
+                "regret_score": regret_score,
+                "base_regret_score": base_regret_score,
+                "route_penalty_contribution_regret": route_penalty_contribution_regret,
+                "robustness_score": robustness_score,
+                "explainability_score": explainability_score,
+                "route_exposure_penalty": route_exposure_penalty,
+                "objective_breakdown": {
+                    "profit_term": profit_term,
+                    "uncertainty_penalty": uncertainty_penalty,
+                    "robustness_penalty": robustness_penalty,
+                    "route_exposure_penalty": route_exposure_penalty,
+                },
+                "swarm_attribution": {
+                    "purchase_mean_base": round(purchase_mean_base, 4),
+                    "purchase_mean_adjusted": round(purchase_mean, 4),
+                    "purchase_mean_delta_pct": round(((purchase_mean / max(purchase_mean_base, 0.0001)) - 1.0) * 100.0, 2),
+                    "freight_mean_base": round(freight_mean_base, 4),
+                    "freight_mean_adjusted": round(freight_mean, 4),
+                    "freight_mean_delta_pct": round(((freight_mean / max(freight_mean_base, 0.0001)) - 1.0) * 100.0, 2),
+                    "noise_base": round(noise_base, 4),
+                    "noise_adjusted": round(noise, 4),
+                    "noise_delta_pct": round(((noise / max(noise_base, 0.0001)) - 1.0) * 100.0, 2),
+                    "fulfillment_confidence_base": fulfillment_confidence_base,
+                    "fulfillment_confidence_adjusted": fulfillment_confidence,
+                    "fulfillment_confidence_delta": round(fulfillment_confidence - fulfillment_confidence_base, 2),
+                },
                 "tradeoff": blueprint["tradeoff"],
                 "locked_revenue_per_unit": round(locked_revenue_per_unit, 4),
                 "target_margin_pct": round(target_margin, 2),
@@ -2367,8 +2689,8 @@ def _profit_recommendation(
         "expected_profit": best["expected_profit"],
         "profit_protected_vs_baseline": round(best["expected_profit"] - baseline["expected_profit"], 2),
         "fulfillment_confidence": best["fulfillment_confidence"],
-        "confidence_range_low": max(50.0, round(best["fulfillment_confidence"] - 6.0, 1)),
-        "confidence_range_high": min(99.0, round(best["fulfillment_confidence"] + 4.0, 1)),
+        "confidence_range_low": max(45.0, round(best["fulfillment_confidence"] - (7.0 + swarm_dissent_penalty * 18.0), 1)),
+        "confidence_range_high": min(99.0, round(best["fulfillment_confidence"] + (3.5 + swarm_confidence * 2.0), 1)),
         "top_tradeoff": best["tradeoff"],
         "rollback_trigger": f"If awarded price exceeds ${best['break_even_purchase_price']:.2f} or ETA slips beyond {int(component_row.get('intervention_day', 14))} days, switch to scenario {scenarios[1]['scenario_id']}",
     }
@@ -2396,6 +2718,16 @@ def _profit_recommendation(
         } if loss_boundary else None,
         "negotiation_band": band,
         "recommendation": recommendation,
+        "swarm_adjustments_applied": {
+            "material_pressure_pct": round(float((swarm_signals.get("derived") or {}).get("material_pressure_pct", 0.0)), 2),
+            "route_stress_pct": round(float((swarm_signals.get("derived") or {}).get("route_stress_pct", 0.0)), 2),
+            "dissent_penalty": round(swarm_dissent_penalty, 3),
+            "judge_confidence": int((swarm_signals.get("judge") or {}).get("confidence", 75)),
+            "consensus_score": round(float((swarm_signals.get("judge") or {}).get("consensus_score", 7.0)), 2),
+            "contradiction_count": int((swarm_signals.get("judge") or {}).get("contradiction_count", 0) or 0),
+            "evidence_strength": int((swarm_signals.get("judge") or {}).get("evidence_strength", 75) or 75),
+            "dissent_summary": (swarm_signals.get("judge") or {}).get("dissent_summary") or (swarm_signals.get("judge") or {}).get("dissent"),
+        },
         "headline": (
             f"{best['scenario_name']} is the best risk-adjusted outcome: landed cost ${best['landed_cost_per_unit']:.2f}/component, "
             f"negotiation ceiling ${best['negotiation_ceiling_purchase_price']:.2f}, break-even purchase ${best['break_even_purchase_price']:.2f}."
@@ -4785,6 +5117,8 @@ def _agent_negotiate_rounds(
     walk_away: float,
     vendor_anchor: float,
     n_rounds: int = 5,
+    buyer_concession_multiplier: float = 1.0,
+    vendor_concession_multiplier: float = 1.0,
 ) -> List[Dict[str, Any]]:
     """
     Simulate multi-round agent negotiation between procurement (buyer) and vendor.
@@ -4808,8 +5142,8 @@ def _agent_negotiate_rounds(
             status = "negotiating"
 
         concession_factor = 0.38 if rnd <= 2 else 0.22 if rnd <= 4 else 0.12
-        buyer_move = min(gap * concession_factor * 0.6, max(0.0, deal_zone_high - buyer_price) * 0.4)
-        vendor_move = max(0.0, (vendor_price - vendor_floor) * concession_factor * 0.7)
+        buyer_move = min(gap * concession_factor * 0.6 * buyer_concession_multiplier, max(0.0, deal_zone_high - buyer_price) * 0.4)
+        vendor_move = max(0.0, (vendor_price - vendor_floor) * concession_factor * 0.7 * vendor_concession_multiplier)
 
         rounds.append({
             "round": rnd,
@@ -4861,6 +5195,15 @@ def _negotiation_brief(
     fixed_conversion = float(sku_profile["fixed_conversion_cost"])
     qty_per_unit = max(1, int(component_row.get("qty_per_unit", 1)))
     order_qty = max(1, int(order_context.get("quantity", 1) or 1))
+    swarm_signals = _resolve_swarm_signal_pack(order_context, active_event_id)
+
+    derived = swarm_signals.get("derived") or {}
+    material_pressure = max(0.0, min(1.0, float(derived.get("material_pressure_pct", 0.0)) / 100.0))
+    route_stress = max(0.0, min(1.0, float(derived.get("route_stress_pct", 0.0)) / 100.0))
+    dissent_penalty = max(0.0, min(0.5, float(derived.get("dissent_penalty", 0.0))))
+    judge_confidence = max(0.0, min(1.0, float((swarm_signals.get("judge") or {}).get("confidence", 75)) / 100.0))
+    consensus_score = max(0.0, min(1.0, float((swarm_signals.get("judge") or {}).get("consensus_score", 7.0)) / 10.0))
+    urgency_pressure = max(0.0, min(0.45, material_pressure * 0.6 + route_stress * 0.5 + dissent_penalty * 0.8))
 
     # Pull from cached profit recommendation if available
     cached_rec = order_context.get("last_profit_recommendation")
@@ -4906,11 +5249,13 @@ def _negotiation_brief(
         # From active scenario if available
         sim_ceiling = float((active_scenario or {}).get("negotiation_ceiling_purchase_price", max_purchase_per_component))
         sim_breakeven = float((active_scenario or {}).get("break_even_purchase_price", break_even_per_component))
-        walk_away_price = round(min(sim_ceiling, max_purchase_per_component), 4)
+        walk_away_price = round(min(sim_ceiling, max_purchase_per_component) * (1.0 - urgency_pressure * 0.16), 4)
 
         # Opening offer: target to land in deal zone — start 8-14% below estimated floor
         estimated_floor = floor_data["estimated_floor"]
         aggressiveness = 0.11 if vendor.get("reliability", 85) > 90 else 0.14
+        aggressiveness = aggressiveness + (0.025 if judge_confidence >= 0.82 and urgency_pressure < 0.2 else 0.0) - (0.03 if urgency_pressure > 0.24 else 0.0)
+        aggressiveness = max(0.06, min(0.2, aggressiveness))
         opening_offer = round(max(estimated_floor * (1.0 - aggressiveness), hist["best_price"] * 0.96), 4)
 
         # Deal zone: range where agreement is mutually possible
@@ -4933,6 +5278,8 @@ def _negotiation_brief(
             vendor_floor=estimated_floor,
             walk_away=walk_away_price,
             vendor_anchor=vendor_anchor,
+            buyer_concession_multiplier=(1.0 + urgency_pressure * 1.3),
+            vendor_concession_multiplier=(1.0 + max(0.0, (judge_confidence - 0.65)) * 0.8 + max(0.0, (consensus_score - 0.7)) * 0.45),
         )
         agreed_round = next((item for item in agent_rounds if item["agreed"]), None)
         projected_deal_price = round(agreed_round["vendor_ask"] if agreed_round else walk_away_price, 4)
@@ -4952,6 +5299,10 @@ def _negotiation_brief(
         # Leverage assessment
         n_alternatives = len([v for v in vendors if v["vendor_id"] != vendor["vendor_id"]])
         leverage = "strong" if n_alternatives >= 3 else "moderate" if n_alternatives >= 1 else "weak"
+        if urgency_pressure > 0.3 and leverage == "strong":
+            leverage = "moderate"
+        elif urgency_pressure > 0.35 and leverage == "moderate":
+            leverage = "weak"
 
         # Compliance profile
         compliance = _vendor_compliance_profile(vendor, active_event_id or "")
@@ -4983,6 +5334,7 @@ def _negotiation_brief(
             "projected_deal_price": round(projected_deal_price, 4),
             "projected_deal_profit_per_unit": round(projected_deal_profit, 4),
             "projected_deal_margin_pct": round(projected_deal_margin_pct, 2),
+            "swarm_urgency_pressure": round(urgency_pressure, 3),
             "agent_rounds": agent_rounds,
             "agreed_in_simulation": agreed_round is not None,
             "compliance": compliance,
@@ -5044,11 +5396,54 @@ def _negotiation_brief(
         "batna": batna,
         "commodity_context": commodity_data,
         "commodity_drivers": drivers,
+        "swarm_adjustments_applied": {
+            "material_pressure_pct": round(material_pressure * 100.0, 2),
+            "route_stress_pct": round(route_stress * 100.0, 2),
+            "dissent_penalty": round(dissent_penalty, 3),
+            "judge_confidence": int(judge_confidence * 100.0),
+            "consensus_score": round(float((swarm_signals.get("judge") or {}).get("consensus_score", 7.0)), 2),
+            "contradiction_count": int((swarm_signals.get("judge") or {}).get("contradiction_count", 0) or 0),
+            "evidence_strength": int((swarm_signals.get("judge") or {}).get("evidence_strength", 75) or 75),
+            "dissent_summary": (swarm_signals.get("judge") or {}).get("dissent_summary") or (swarm_signals.get("judge") or {}).get("dissent"),
+            "urgency_pressure": round(urgency_pressure, 3),
+        },
         "headline": (
             f"Deal zone for {primary['vendor_name']}: ${primary['deal_zone_low']:.2f}–${primary['deal_zone_high']:.2f}. "
             f"Open at ${primary['opening_offer']:.2f}. Walk-away at ${primary['walk_away_price']:.2f}. "
             f"{'Agreement feasible in simulation.' if primary['agreed_in_simulation'] else 'Gap requires BATNA escalation.'}"
         ),
+    }
+
+
+@app.post("/api/v2/orders/{order_id}/swarm-signals")
+def upsert_swarm_signals(order_id: str, request: SwarmSignalsRequest) -> dict:
+    order_context = ORDER_CONTEXTS.get(order_id)
+    if not order_context:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    event_id = request.event_id or order_context.get("event_id")
+    normalized = _normalize_swarm_signal_pack(
+        {
+            "run_id": request.run_id,
+            "event_id": event_id,
+            "material_amplifications": request.material_amplifications,
+            "route_signals": [item.model_dump() for item in request.route_signals],
+            "blocked_corridors": request.blocked_corridors,
+            "judge": request.judge.model_dump(),
+            "agent_completion_pct": request.agent_completion_pct,
+        },
+        event_id,
+    )
+    order_context["swarm_signal_pack"] = normalized
+    order_context.pop("last_profit_recommendation", None)
+
+    return {
+        "order_id": order_id,
+        "event_id": normalized.get("event_id"),
+        "run_id": normalized.get("run_id"),
+        "status": "saved",
+        "derived": normalized.get("derived", {}),
+        "updated_at": normalized.get("updated_at"),
     }
 
 
@@ -5106,6 +5501,61 @@ def profit_recommendation(
         preferred_freight_mode=freight_mode,
         monte_carlo_runs=monte_carlo_runs,
     )
+
+
+@app.post("/api/v2/orders/{order_id}/negotiation-rationale")
+async def negotiation_rationale(order_id: str, request: NegotiationRationaleRequest) -> dict:
+    order_context = ORDER_CONTEXTS.get(order_id)
+    if not order_context:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    result = "deal" if str(request.negotiation_result or "").lower().startswith("deal") else "no deal"
+    trend = str(request.commodity_trend or "stable").lower()
+    urgency = float(request.urgency_pressure_score or 0.0)
+
+    scripted = (
+        f"{request.counterparty_vendor_name} {'held' if result == 'deal' else 'remained'} near ${float(request.final_vendor_price or 0):.2f} while buyer moved to ${float(request.final_buyer_price or 0):.2f}. "
+        f"Commodity trend is {trend}, and urgency pressure is {urgency:.3f}, which {'supports fast closure' if urgency >= 0.22 else 'allows controlled negotiation pacing'}. "
+        f"{'Proceed to PO release and lock logistics within 48 hours.' if result == 'deal' else f'Activate BATNA with {request.batna_vendor_name or "the alternate vendor"} and close within 48 hours.'}"
+    )
+
+    system_prompt = (
+        "You are a supply-chain negotiation strategist. "
+        "Write concise executive rationale in 2-3 sentences with one clear next action. "
+        "No markdown, no bullets."
+    )
+    user_prompt = (
+        f"Negotiation result: {result}\n"
+        f"Buyer name: {request.buyer_vendor_name}\n"
+        f"Vendor name: {request.counterparty_vendor_name}\n"
+        f"Final buyer offer: ${float(request.final_buyer_price or 0):.2f}\n"
+        f"Final vendor ask: ${float(request.final_vendor_price or 0):.2f}\n"
+        f"Vendor floor: ${float(request.vendor_floor_price or 0):.2f}\n"
+        f"Walk-away: ${float(request.walk_away_price or 0):.2f}\n"
+        f"Commodity trend: {trend}\n"
+        f"Urgency pressure score: {urgency:.3f}\n"
+        f"BATNA vendor: {request.batna_vendor_name or 'none'}\n"
+        f"BATNA lead days: {float(request.batna_lead_days or 0):.1f}\n"
+        f"BATNA margin: {float(request.batna_margin_pct or 0):.1f}%\n\n"
+        "Return strict JSON with one key only: rationale."
+    )
+
+    try:
+        payload = await _structured_llm_json(system_prompt, user_prompt)
+        rationale = str(payload.get("rationale", "")).strip() or scripted
+        return {
+            "order_id": order_id,
+            "source": "llm",
+            "model": OPENAI_MODEL if OPENAI_API_KEY and AsyncOpenAI is not None else OLLAMA_MODEL,
+            "rationale": rationale,
+        }
+    except Exception:
+        return {
+            "order_id": order_id,
+            "source": "scripted",
+            "model": "fallback",
+            "rationale": scripted,
+        }
 
 
 @app.get("/api/v2/orders/{order_id}/execution-learning")
@@ -5174,7 +5624,17 @@ def route_optimizer(request: RouteOptimizerRequest) -> dict:
     if not order_context:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    routes = _choose_routes(request.vendor_id, request.blocked_corridors, request.mode_preference)
+    swarm_signals = _resolve_swarm_signal_pack(order_context, order_context.get("event_id", ""))
+    merged_blocked = sorted(set((request.blocked_corridors or []) + (swarm_signals.get("blocked_corridors") or [])))
+    routes = _choose_routes(request.vendor_id, merged_blocked, request.mode_preference)
+    route_signals = swarm_signals.get("route_signals", [])
+    for route in routes:
+        penalty = _route_signal_penalty(route, route_signals)
+        base_score = float(route.get("route_score", 0.0))
+        route["swarm_signal_penalty"] = round(penalty, 2)
+        route["swarm_adjusted_score"] = round(max(0.0, base_score - penalty), 2)
+    routes.sort(key=lambda item: item.get("swarm_adjusted_score", item.get("route_score", 0.0)), reverse=True)
+
     primary = routes[0] if routes else None
     fallbacks = routes[1:3] if len(routes) > 1 else []
     air_routes = [route for route in routes if route.get("mode") == "air"]
@@ -5189,7 +5649,7 @@ def route_optimizer(request: RouteOptimizerRequest) -> dict:
         payload={
             "component_id": request.component_id,
             "vendor_id": request.vendor_id,
-            "blocked_corridors": request.blocked_corridors,
+            "blocked_corridors": merged_blocked,
             "primary_route": primary["route_id"] if primary else None,
         },
     )
@@ -5199,6 +5659,11 @@ def route_optimizer(request: RouteOptimizerRequest) -> dict:
         "vendor_id": request.vendor_id,
         "destination_factory": request.destination_factory,
         "corridor_graph": CORRIDOR_GRAPH,
+        "swarm_adjustments_applied": {
+            "blocked_corridors": merged_blocked,
+            "route_signal_count": len(route_signals),
+            "route_stress_pct": round(float((swarm_signals.get("derived") or {}).get("route_stress_pct", 0.0)), 2),
+        },
         "recommended_primary": primary,
         "fallback_routes": fallbacks,
         "mode_comparison": {

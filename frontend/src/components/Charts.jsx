@@ -1,5 +1,5 @@
 import ReactECharts from 'echarts-for-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   ReactFlow,
@@ -609,117 +609,117 @@ export function ProfitWaterfallChart({ scenario }) {
 }
 
 // ── Module 4: Deal Zone Chart ─────────────────────────────────────────────────
-// Horizontal range bar showing: raw floor | vendor floor | opening offer | deal zone | walk-away
+// Clean negotiation bar with alternating labels to avoid overlap.
 export function DealZoneChart({ brief }) {
-  const option = useMemo(() => {
-    if (!brief) return {}
-    const floor = Number(brief.estimated_vendor_floor ?? 0)
+  const model = useMemo(() => {
+    if (!brief) return null
     const opening = Number(brief.opening_offer ?? 0)
-    const dealLow = Number(brief.deal_zone_low ?? 0)
-    const dealHigh = Number(brief.deal_zone_high ?? 0)
+    const vendorFloor = Number(brief.estimated_vendor_floor ?? 0)
+    const negotiationCeiling = Number(brief.deal_zone_high ?? 0)
     const walkAway = Number(brief.walk_away_price ?? 0)
-    const anchor = Number(brief.vendor_anchor_price ?? 0)
-    const breakEven = Number(brief.break_even_price ?? 0)
-    const all = [floor, opening, dealLow, dealHigh, walkAway, anchor, breakEven].filter(Boolean)
-    const minVal = Math.floor(Math.min(...all) * 0.94)
-    const maxVal = Math.ceil(Math.max(...all) * 1.06)
+
+    const values = [opening, vendorFloor, negotiationCeiling, walkAway].filter((value) => Number.isFinite(value))
+    if (!values.length) return null
+
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+    const span = Math.max(0.01, maxValue - minValue)
+    const pad = Math.max(0.5, span * 0.1)
+    const scaleMin = Math.max(0, minValue - pad)
+    const scaleMax = maxValue + pad
+    const denom = Math.max(0.001, scaleMax - scaleMin)
+    const toPct = (value) => ((value - scaleMin) / denom) * 100
 
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: '#0a1628',
-        borderColor: '#00bfff30',
-        textStyle: { color: '#aaccdd', fontSize: 11 },
-        formatter: (params) => {
-          return params
-            .filter((p) => p.value !== 0 && p.seriesName !== 'Base')
-            .map((p) => `${p.seriesName}: <b>$${Number(p.value).toFixed(2)}</b>`)
-            .join('<br/>')
-        },
-      },
-      grid: { left: 12, right: 12, top: 10, bottom: 60, containLabel: true },
-      xAxis: {
-        type: 'value',
-        min: minVal,
-        max: maxVal,
-        axisLabel: { color: '#7aaccc', fontSize: 10, formatter: (v) => `$${v}` },
-        axisLine: { lineStyle: { color: '#00bfff20' } },
-        splitLine: { lineStyle: { color: '#00bfff10' } },
-      },
-      yAxis: {
-        type: 'category',
-        data: ['Price Range'],
-        axisLabel: { color: '#4a7a90', fontSize: 10 },
-        axisLine: { lineStyle: { color: '#00bfff20' } },
-      },
-      series: [
-        { name: 'Base', type: 'bar', stack: 'stack', data: [minVal], itemStyle: { color: 'transparent' }, tooltip: { show: false }, emphasis: { disabled: true } },
-        { name: 'Vendor Floor Zone', type: 'bar', stack: 'stack', data: [floor - minVal], itemStyle: { color: 'rgba(255,80,80,0.18)', borderRadius: [4, 0, 0, 4] }, label: { show: false } },
-        { name: 'Negotiation Zone', type: 'bar', stack: 'stack', data: [dealHigh - floor], itemStyle: { color: 'rgba(0,191,255,0.22)', borderRadius: [0, 0, 0, 0] } },
-        { name: 'Above Walk-Away', type: 'bar', stack: 'stack', data: [Math.max(0, anchor - dealHigh)], itemStyle: { color: 'rgba(255,180,0,0.15)', borderRadius: [0, 4, 4, 0] } },
-        {
-          name: 'Vendor Floor',
-          type: 'scatter',
-          data: [[floor, 0]],
-          symbolSize: 14,
-          itemStyle: { color: '#ff5050' },
-          label: { show: true, formatter: `Floor $${floor.toFixed(2)}`, position: 'top', color: '#ff5050', fontSize: 9 },
-        },
-        {
-          name: 'Opening Offer',
-          type: 'scatter',
-          data: [[opening, 0]],
-          symbolSize: 14,
-          itemStyle: { color: '#00bfff' },
-          label: { show: true, formatter: `Open $${opening.toFixed(2)}`, position: 'bottom', color: '#00bfff', fontSize: 9 },
-        },
-        {
-          name: 'Deal Zone Low',
-          type: 'scatter',
-          data: [[dealLow, 0]],
-          symbolSize: 10,
-          itemStyle: { color: '#39d353' },
-          label: { show: true, formatter: `Zone Low $${dealLow.toFixed(2)}`, position: 'top', color: '#39d353', fontSize: 9 },
-        },
-        {
-          name: 'Deal Zone High',
-          type: 'scatter',
-          data: [[dealHigh, 0]],
-          symbolSize: 10,
-          itemStyle: { color: '#39d353' },
-          label: { show: true, formatter: `Zone High $${dealHigh.toFixed(2)}`, position: 'bottom', color: '#39d353', fontSize: 9 },
-        },
-        {
-          name: 'Walk-Away',
-          type: 'scatter',
-          data: [[walkAway, 0]],
-          symbolSize: 16,
-          itemStyle: { color: '#ffb300' },
-          label: { show: true, formatter: `Walk-Away $${walkAway.toFixed(2)}`, position: 'top', color: '#ffb300', fontSize: 9 },
-        },
-        {
-          name: 'Vendor Anchor',
-          type: 'scatter',
-          data: [[anchor, 0]],
-          symbolSize: 10,
-          symbol: 'triangle',
-          itemStyle: { color: '#cc66ff' },
-          label: { show: true, formatter: `Anchor $${anchor.toFixed(2)}`, position: 'bottom', color: '#cc66ff', fontSize: 9 },
-        },
-      ],
+      opening,
+      vendorFloor,
+      negotiationCeiling,
+      walkAway,
+      zoneStartPct: toPct(Math.min(vendorFloor, negotiationCeiling)),
+      zoneEndPct: toPct(Math.max(vendorFloor, negotiationCeiling)),
+      ticks: [
+        { key: 'opening', label: 'Opening Offer', value: opening, color: '#00bfff', placement: 'top' },
+        { key: 'floor', label: 'Vendor Floor', value: vendorFloor, color: '#00d4aa', placement: 'bottom' },
+        { key: 'ceiling', label: 'Negotiation Ceiling (your ceiling)', value: negotiationCeiling, color: '#00d4aa', placement: 'top' },
+        { key: 'walkaway', label: 'Walk-Away', value: walkAway, color: '#ff4060', placement: 'bottom' },
+      ].map((tick) => ({
+        ...tick,
+        pct: toPct(tick.value),
+      })),
     }
   }, [brief])
 
-  if (!brief) return <p className="empty-state">Deal zone chart appears after selecting a vendor brief.</p>
+  if (!brief || !model) return <p className="empty-state">Deal zone chart appears after selecting a vendor brief.</p>
 
   return (
-    <ReactECharts
-      option={option}
-      style={{ height: '180px', width: '100%' }}
-      opts={{ renderer: 'canvas' }}
-    />
+    <div style={{ width: '100%', minHeight: 150 }}>
+      <div style={{ position: 'relative', height: 96 }}>
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 44,
+            height: 10,
+            borderRadius: 999,
+            background: '#0f2130',
+            border: '1px solid rgba(122, 168, 196, 0.24)',
+          }}
+        />
+
+        <div
+          style={{
+            position: 'absolute',
+            top: 44,
+            left: `${model.zoneStartPct}%`,
+            width: `${Math.max(0, model.zoneEndPct - model.zoneStartPct)}%`,
+            height: 10,
+            borderRadius: 999,
+            background: 'rgba(0, 212, 170, 0.68)',
+            boxShadow: '0 0 12px rgba(0, 212, 170, 0.28)',
+          }}
+        />
+
+        {model.ticks.map((tick) => (
+          <div key={tick.key} style={{ position: 'absolute', left: `${tick.pct}%`, top: 0, transform: 'translateX(-50%)', width: 120 }}>
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                top: 36,
+                width: 2,
+                height: 26,
+                background: tick.color,
+                borderRadius: 2,
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                top: tick.placement === 'top' ? 2 : 66,
+                width: 120,
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ color: '#7ea8c4', fontSize: 9, fontFamily: '"SF Mono", monospace', lineHeight: 1.2 }}>
+                {tick.label}
+              </div>
+              <div style={{ color: tick.color, fontSize: 10, fontFamily: '"SF Mono", monospace', fontWeight: 700, marginTop: 1 }}>
+                ${tick.value.toFixed(2)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p style={{ marginTop: 8, color: '#6f93ab', fontSize: 12, lineHeight: 1.4 }}>
+        Agreement is possible anywhere in the teal zone — above the vendor's floor, below your ceiling.
+      </p>
+    </div>
   )
 }
 
@@ -952,13 +952,22 @@ export function RecommendationRankChart({ options, sortBy = 'margin' }) {
     if (!options?.length) return {}
     const labels = options.map((item) => item.label)
     const values = options.map((item) => {
+      if (sortBy === 'objective') return item.confidenceAdjustedObjective
+      if (sortBy === 'robustness') return item.robustnessScore
+      if (sortBy === 'regret') return item.regretScore
       if (sortBy === 'risk') return item.riskScore
       if (sortBy === 'lead') return item.leadTimeDays
       if (sortBy === 'cost') return item.totalLandedCost
       return item.projectedMarginPct
     })
 
-    const color = sortBy === 'risk'
+    const color = sortBy === 'objective'
+      ? '#ffe066'
+      : sortBy === 'robustness'
+        ? '#4ce0b3'
+        : sortBy === 'regret'
+          ? '#ff9f43'
+          : sortBy === 'risk'
       ? '#ff5050'
       : sortBy === 'lead'
         ? '#ffb300'
@@ -988,6 +997,9 @@ export function RecommendationRankChart({ options, sortBy = 'margin' }) {
           color: '#4a7a90',
           fontSize: 10,
           formatter: (v) => {
+            if (sortBy === 'objective') return `$${Number(v / 1000).toFixed(0)}k`
+            if (sortBy === 'robustness') return Number(v).toFixed(0)
+            if (sortBy === 'regret') return Number(v).toFixed(1)
             if (sortBy === 'margin') return `${Number(v).toFixed(0)}%`
             if (sortBy === 'cost') return `$${Number(v / 1000).toFixed(1)}k`
             if (sortBy === 'lead') return `${Number(v).toFixed(0)}d`
@@ -1013,6 +1025,9 @@ export function RecommendationRankChart({ options, sortBy = 'margin' }) {
             color: '#aaccdd',
             fontSize: 9,
             formatter: ({ value }) => {
+              if (sortBy === 'objective') return `$${Number(value / 1000).toFixed(1)}k`
+              if (sortBy === 'robustness') return Number(value).toFixed(1)
+              if (sortBy === 'regret') return Number(value).toFixed(2)
               if (sortBy === 'margin') return `${Number(value).toFixed(1)}%`
               if (sortBy === 'cost') return `$${Number(value).toFixed(0)}`
               if (sortBy === 'lead') return `${Number(value).toFixed(0)}d`
@@ -1240,12 +1255,14 @@ export function LearningDeltaBarChart({ feedback, deltas }) {
 }
 
 // ── Module 6: Decision Accuracy Trend ──────────────────────────────────────
-export function DecisionAccuracyTrendChart({ decisions }) {
+export function DecisionAccuracyTrendChart({ decisions, onDecisionSelect, activeDecisionId }) {
   const option = useMemo(() => {
     if (!decisions?.length) return {}
-    const ordered = [...decisions].reverse()
+    const ordered = [...decisions].sort((a, b) => String(a.decision_date || '').localeCompare(String(b.decision_date || '')))
     const labels = ordered.map((item, idx) => `D${idx + 1}`)
-    const scores = ordered.map((item) => Number(item.accuracy_score || 0))
+    const projectedMargins = ordered.map((item) => Number(item.projected_margin_pct || 0))
+    const actualMargins = ordered.map((item) => Number(item.actual_margin_pct || 0))
+    const decisionIds = ordered.map((item) => item.decision_id)
 
     return {
       backgroundColor: 'transparent',
@@ -1254,6 +1271,20 @@ export function DecisionAccuracyTrendChart({ decisions }) {
         backgroundColor: '#0a1628',
         borderColor: '#00bfff30',
         textStyle: { color: '#aaccdd', fontSize: 11 },
+        formatter: (items) => {
+          if (!items?.length) return ''
+          const idx = Number(items[0].dataIndex || 0)
+          const row = ordered[idx] || {}
+          const delta = Number(row.actual_margin_pct || 0) - Number(row.projected_margin_pct || 0)
+          const deltaText = `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%`
+          return [
+            `<strong>${labels[idx]}</strong>`,
+            `Projected: ${Number(row.projected_margin_pct || 0).toFixed(1)}%`,
+            `Actual: ${Number(row.actual_margin_pct || 0).toFixed(1)}%`,
+            `Delta: ${deltaText}`,
+            row.reasoning ? `<span style="color:#86b3cc">${row.reasoning}</span>` : '',
+          ].filter(Boolean).join('<br/>')
+        },
       },
       grid: { left: 12, right: 10, top: 16, bottom: 30, containLabel: true },
       xAxis: {
@@ -1264,30 +1295,45 @@ export function DecisionAccuracyTrendChart({ decisions }) {
       },
       yAxis: {
         type: 'value',
-        min: 0,
-        max: 100,
-        axisLabel: { color: '#4a7a90', fontSize: 10, formatter: (v) => `${Number(v).toFixed(0)}` },
+        min: (value) => Math.max(0, Number(value.min) - 1.6),
+        max: (value) => Number(value.max) + 1.6,
+        axisLabel: { color: '#4a7a90', fontSize: 10, formatter: (v) => `${Number(v).toFixed(0)}%` },
         splitLine: { lineStyle: { color: '#00bfff10' } },
       },
       series: [
         {
-          name: 'Outcome Accuracy',
+          name: 'Projected Margin',
           type: 'line',
           smooth: true,
-          data: scores,
-          lineStyle: { color: '#00e5a8', width: 2 },
-          itemStyle: { color: '#00e5a8' },
-          areaStyle: { color: 'rgba(0,229,168,0.12)' },
-          markLine: {
-            silent: true,
-            symbol: 'none',
-            lineStyle: { color: '#ffb30099', type: 'dashed' },
-            data: [{ yAxis: 75, name: 'Target Accuracy' }],
-          },
+          data: projectedMargins,
+          lineStyle: { color: '#08b7c8', width: 2, type: 'dashed' },
+          itemStyle: { color: '#08b7c8' },
+          symbol: 'circle',
+          symbolSize: (value, params) => (decisionIds[params.dataIndex] === activeDecisionId ? 10 : 7),
+        },
+        {
+          name: 'Actual Margin',
+          type: 'line',
+          smooth: true,
+          data: actualMargins,
+          lineStyle: { color: '#39d353', width: 2.5 },
+          itemStyle: { color: '#39d353' },
+          areaStyle: { color: 'rgba(57,211,83,0.12)' },
+          symbol: 'circle',
+          symbolSize: (value, params) => (decisionIds[params.dataIndex] === activeDecisionId ? 10 : 7),
         },
       ],
     }
-  }, [decisions])
+  }, [activeDecisionId, decisions])
+
+  const onEvents = useMemo(() => ({
+    click: (params) => {
+      if (!onDecisionSelect || !decisions?.length) return
+      const ordered = [...decisions].sort((a, b) => String(a.decision_date || '').localeCompare(String(b.decision_date || '')))
+      const selected = ordered[Number(params?.dataIndex || 0)]
+      if (selected?.decision_id) onDecisionSelect(selected.decision_id)
+    },
+  }), [decisions, onDecisionSelect])
 
   if (!decisions?.length) return <p className="empty-state">Decision trend appears after decision history is available.</p>
 
@@ -1296,12 +1342,35 @@ export function DecisionAccuracyTrendChart({ decisions }) {
       option={option}
       style={{ height: '220px', width: '100%' }}
       opts={{ renderer: 'canvas' }}
+      onEvents={onEvents}
     />
   )
 }
 
 // ── Module 6: RL Calibration Radar ─────────────────────────────────────────
-export function RLCalibrationRadarChart({ rlUpdates }) {
+export function RLCalibrationRadarChart({ rlUpdates, learningProgress = 1 }) {
+  const clampedProgress = Math.max(0, Math.min(1, Number(learningProgress || 0)))
+  const [animatedProgress, setAnimatedProgress] = useState(0)
+
+  useEffect(() => {
+    let frameId = 0
+    const start = performance.now()
+    const from = 0
+    const to = clampedProgress
+    const duration = 900
+
+    const tick = (ts) => {
+      const elapsed = Math.max(0, ts - start)
+      const t = Math.min(1, elapsed / duration)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setAnimatedProgress(from + (to - from) * eased)
+      if (t < 1) frameId = window.requestAnimationFrame(tick)
+    }
+
+    frameId = window.requestAnimationFrame(tick)
+    return () => window.cancelAnimationFrame(frameId)
+  }, [clampedProgress])
+
   const option = useMemo(() => {
     if (!rlUpdates) return {}
     const vendorShift = Number(Math.abs(rlUpdates?.vendor_reliability?.[0]?.delta || 0))
@@ -1314,10 +1383,16 @@ export function RLCalibrationRadarChart({ rlUpdates }) {
       + Math.abs((simAfter.risk_reserve_factor || 0) - (simBefore.risk_reserve_factor || 0)) * 10
     )
     const floorShift = Number(Math.abs(rlUpdates?.negotiation_floor_adjustment_pct || 0))
+    const fullSurface = [vendorShift, commodityDelta, simShift, floorShift]
+    const growthSurface = fullSurface.map((value) => Number((value * animatedProgress).toFixed(4)))
 
     return {
       backgroundColor: 'transparent',
-      tooltip: { backgroundColor: '#0a1628', borderColor: '#00bfff30', textStyle: { color: '#aaccdd', fontSize: 11 } },
+      tooltip: {
+        backgroundColor: '#0a1628',
+        borderColor: '#00bfff30',
+        textStyle: { color: '#aaccdd', fontSize: 11 },
+      },
       radar: {
         indicator: [
           { name: 'Vendor Reliability', max: 8 },
@@ -1337,8 +1412,15 @@ export function RLCalibrationRadarChart({ rlUpdates }) {
           type: 'radar',
           data: [
             {
-              name: 'Update Magnitude',
-              value: [vendorShift, commodityDelta, simShift, floorShift],
+              name: 'Target Learning Surface',
+              value: fullSurface,
+              itemStyle: { color: '#00bfff' },
+              lineStyle: { color: '#00bfff88', width: 1.5, type: 'dashed' },
+              areaStyle: { color: 'rgba(0,191,255,0.08)' },
+            },
+            {
+              name: 'Observed Learning',
+              value: growthSurface,
               itemStyle: { color: '#39d353' },
               lineStyle: { color: '#39d353', width: 2 },
               areaStyle: { color: 'rgba(57,211,83,0.15)' },
@@ -1346,8 +1428,20 @@ export function RLCalibrationRadarChart({ rlUpdates }) {
           ],
         },
       ],
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: '86%',
+          style: {
+            text: `Learning visibility ${Math.round(animatedProgress * 100)}%`,
+            fill: '#7aaccc',
+            font: '10px "SF Mono", monospace',
+          },
+        },
+      ],
     }
-  }, [rlUpdates])
+  }, [animatedProgress, rlUpdates])
 
   if (!rlUpdates) return <p className="empty-state">RL calibration radar appears after learning updates are computed.</p>
 

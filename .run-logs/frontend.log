@@ -1,7 +1,21 @@
 
-> frontend@0.0.0 preview
-> vite preview --host 0.0.0.0 --port 5175
+> frontend@0.0.0 dev
+> vite --host 0.0.0.0 --port 5175
+
+
+  VITE v8.0.8  ready in 154 ms
 
   ➜  Local:   http://localhost:5175/
   ➜  Network: http://192.168.42.62:5175/
   ➜  Network: http://192.168.42.61:5175/
+10:32:36 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:32:38 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:40:54 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:41:05 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:48:34 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:48:41 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+10:48:56 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+11:33:22 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+11:33:47 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+11:35:22 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
+11:35:23 AM [vite] (client) hmr update /src/LegacyDashboard.jsx
