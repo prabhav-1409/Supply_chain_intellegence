@@ -31,20 +31,7 @@ export default function FlowShell({ children }) {
         <p>We are not just tracking disruptions. We are telling the procurement head exactly what to pay, who to pay it to, and why — so every purchase protects margin.</p>
       </header>
 
-      <nav className="flow-stepper" aria-label="Workflow steps">
-        {STEPS.map((step, idx) => (
-          <div key={step.id} className="flow-step-wrap">
-            <Link className={`flow-step ${activeStep >= step.id ? 'active' : ''}`} to={step.to}>
-              <span className="flow-step-badge">{step.id}</span>
-              <span className="flow-step-icon">{step.icon}</span>
-              <span>{step.label}</span>
-            </Link>
-            {idx < STEPS.length - 1 && <div className={`flow-step-line ${activeStep > step.id ? 'active' : ''}`} />}
-          </div>
-        ))}
-      </nav>
-
-      <main className="flow-content">{children}</main>
+<main className="flow-content">{children}</main>
     </div>
   )
 }

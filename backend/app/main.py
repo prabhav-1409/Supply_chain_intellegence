@@ -5512,11 +5512,16 @@ async def negotiation_rationale(order_id: str, request: NegotiationRationaleRequ
     result = "deal" if str(request.negotiation_result or "").lower().startswith("deal") else "no deal"
     trend = str(request.commodity_trend or "stable").lower()
     urgency = float(request.urgency_pressure_score or 0.0)
+    batna_vendor = request.batna_vendor_name or "the alternate vendor"
 
     scripted = (
         f"{request.counterparty_vendor_name} {'held' if result == 'deal' else 'remained'} near ${float(request.final_vendor_price or 0):.2f} while buyer moved to ${float(request.final_buyer_price or 0):.2f}. "
         f"Commodity trend is {trend}, and urgency pressure is {urgency:.3f}, which {'supports fast closure' if urgency >= 0.22 else 'allows controlled negotiation pacing'}. "
-        f"{'Proceed to PO release and lock logistics within 48 hours.' if result == 'deal' else f'Activate BATNA with {request.batna_vendor_name or "the alternate vendor"} and close within 48 hours.'}"
+        + (
+            "Proceed to PO release and lock logistics within 48 hours."
+            if result == "deal"
+            else f"Activate BATNA with {batna_vendor} and close within 48 hours."
+        )
     )
 
     system_prompt = (

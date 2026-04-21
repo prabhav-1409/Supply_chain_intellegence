@@ -2,6 +2,10 @@
   min-height: 100vh;
   background: radial-gradient(circle at 20% 10%, #172f57 0%, #0b1731 45%, #071124 100%);
   color: #dbe9ff;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .flow-topbar {
@@ -11,22 +15,28 @@
 }
 .flow-topbar h1 {
   margin: 0;
-  font-size: 16px;
-  letter-spacing: 0.08em;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 .flow-topbar p {
   margin: 4px 0 0;
   color: #88a7d6;
-  font-size: 12px;
+  font-size: 11px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 
 .flow-stepper {
   display: flex;
   justify-content: center;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
   padding: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 .flow-step-wrap {
   display: flex;
@@ -39,11 +49,12 @@
   background: #10203f;
   border: 1px solid #2b3f63;
   border-radius: 999px;
-  padding: 8px 12px;
+  padding: 7px 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 11px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
   white-space: nowrap;
 }
 .flow-step.active {
@@ -60,7 +71,7 @@
   background: #1e3357;
 }
 .flow-step-line {
-  width: 42px;
+  width: 20px;
   height: 1px;
   background: #324f79;
 }
@@ -69,11 +80,12 @@
 }
 
 .flow-content {
-  padding: 20px;
+  padding: 16px 12px;
 }
 
 .flow-page {
-  max-width: 1100px;
+  width: 90%;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -142,7 +154,9 @@
 }
 .sim-card h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 .sim-card p {
   margin: 8px 0 14px;
@@ -197,17 +211,21 @@
 }
 .sim-anchor-label {
   color: #8fb7ea;
-  font-size: 11px;
+  font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 500;
 }
 .sim-anchor-card strong {
   color: #e4f1ff;
-  font-size: 18px;
+  font-size: 15px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
 }
 .sim-anchor-note {
   color: #a5c0e6;
-  font-size: 12px;
+  font-size: 11px;
 }
 .route-grid {
   display: grid;
@@ -216,8 +234,11 @@
 }
 .route-grid h4 {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: 11px;
   color: #c8ddff;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 .sim-toggle {
   border: 1px solid #2e4771;
@@ -227,7 +248,8 @@
   align-items: center;
   gap: 8px;
   color: #c0d3f4;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 .sim-toggle.checked {
   border-color: #59a0ff;
@@ -267,12 +289,15 @@
   gap: 6px;
 }
 .sim-summary strong {
-  font-size: 26px;
+  font-size: 20px;
   color: #6cb3ff;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
 }
 .sim-summary span {
   color: #95afd8;
-  font-size: 12px;
+  font-size: 11px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 
 .sim-slider-label {
@@ -281,11 +306,14 @@
   align-items: center;
   margin: 8px 0;
   color: #bcd2f3;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 .sim-slider-label strong {
   color: #70b5ff;
-  font-size: 18px;
+  font-size: 15px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
 }
 .sim-slider-scale {
   display: flex;
@@ -352,7 +380,9 @@
   font-size: 11px;
 }
 .readiness-grid strong {
-  font-size: 18px;
+  font-size: 15px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
 }
 
 .results-toolbar {
@@ -414,10 +444,15 @@
 .scenario-finalize-wrap p {
   color: #90b2dc;
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
+  font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
 }
 
 @media (max-width: 900px) {
+  .flow-content {
+    padding: 14px 10px;
+  }
+
   .route-grid,
   .sim-grid,
   .tariff-grid,

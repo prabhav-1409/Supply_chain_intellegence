@@ -10,6 +10,8 @@ body,
 }
 
 body {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-family: 'Space Grotesk', 'Inter', 'Segoe UI', system-ui, sans-serif;
   background: #0a0f1d;
+  font-size: 13px;
+  line-height: 1.5;
 }

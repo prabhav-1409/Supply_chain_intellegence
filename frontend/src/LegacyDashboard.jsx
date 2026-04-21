@@ -70,6 +70,15 @@ const defaultTriggerTypeByEvent = {
   'tsmc-factory-fire': 'commodity-spike',
 }
 
+const eventMeta = {
+  'taiwan-earthquake':  { region: 'APAC',   type: 'Seismic',    severity: 'critical', category: 'commodity' },
+  'us-china-tariff':    { region: 'US',      type: 'Policy',     severity: 'high',     category: 'tariff'    },
+  'hormuz-closure':     { region: 'MENA',    type: 'Maritime',   severity: 'high',     category: 'vessel'    },
+  'us-china-trade-war': { region: 'Global',  type: 'Policy',     severity: 'critical', category: 'tariff'    },
+  'malaysia-floods':    { region: 'SEA',     type: 'Climate',    severity: 'critical', category: 'port'      },
+  'tsmc-factory-fire':  { region: 'APAC',    type: 'Industrial', severity: 'critical', category: 'commodity' },
+}
+
 function LiveAgentCard({ agentLabel, insight, fallbackTitle, fallbackBody, isWorking, timeline = [], onOpenDebug }) {
   const summary = insight?.summary || fallbackTitle
   const body = fallbackBody || ''
@@ -346,7 +355,7 @@ function ScenarioCardGrid({ scenarios, baseScenario }) {
               <span className={`sim-status-pill ${statusClass}`}>{statusLabel}</span>
             </div>
             <div className="sim-scenario-gauge">
-              <MarginArcGauge marginPct={marginPct} size={88} />
+              <MarginArcGauge marginPct={marginPct} size={72} />
             </div>
             <p className="sim-scenario-story">{story}</p>
             <div className="sim-scenario-meta">
@@ -501,6 +510,7 @@ function GapClosingChart({ rounds = [] }) {
 
 function NegotiationChatThread({ rounds = [], vendorName, walkAwayPrice, targetMarginPct = 22, projectedDealMarginPct = 0 }) {
   const [expandedReasoning, setExpandedReasoning] = useState({})
+  const [chatInput, setChatInput] = useState('')
 
   const messageRows = useMemo(() => {
     return rounds.flatMap((round) => {
@@ -510,109 +520,167 @@ function NegotiationChatThread({ rounds = [], vendorName, walkAwayPrice, targetM
       const statusText = String(round?.status || 'negotiating').replace(/-/g, ' ')
       const gap = Number(round?.gap || 0)
       const roundLabel = `R${Number(round?.round || 0)}`
-
       return [
-        {
-          id: `buyer-${roundLabel}`,
-          side: 'buyer',
-          roundLabel,
-          agent: 'Buyer (AI agent)',
-          price: Number(round?.buyer_offer || 0),
-          reasoning: buyerReasoning,
-          impact: `Margin impact: ${buyerMargin.toFixed(1)}% gross margin (${buyerMargin >= Number(targetMarginPct || 22) ? 'above floor' : 'below floor'}).`,
-          statusText,
-          gap,
-          rawRound: round,
-        },
-        {
-          id: `vendor-${roundLabel}`,
-          side: 'vendor',
-          roundLabel,
-          agent: 'Vendor Rep (AI agent)',
-          price: Number(round?.vendor_ask || 0),
-          reasoning: vendorReasoning,
-          impact: `Gap after counter: $${gap.toFixed(2)} · status ${statusText}.`,
-          statusText,
-          gap,
-          rawRound: round,
-        },
+        { id: `buyer-${roundLabel}`, side: 'buyer', roundLabel, agent: 'Buyer (AI Agent)', price: Number(round?.buyer_offer || 0), reasoning: buyerReasoning, impact: `Opening at $${Math.floor(Number(round?.buyer_offer || 0))}.`, gap, rawRound: round },
+        { id: `vendor-${roundLabel}`, side: 'vendor', roundLabel, agent: 'Vendor Rep (AI Agent)', price: Number(round?.vendor_ask || 0), reasoning: vendorReasoning, impact: `Countering at $${Math.floor(Number(round?.vendor_ask || 0))}.`, gap, rawRound: round },
       ]
     })
   }, [rounds, targetMarginPct, vendorName, walkAwayPrice])
 
-  const finalAgreedRound = useMemo(() => rounds.find((round) => round.agreed), [rounds])
-  const lastRoundLabel = useMemo(() => {
-    const lastRound = rounds[rounds.length - 1]
-    return lastRound ? `R${Number(lastRound.round || 0)}` : ''
-  }, [rounds])
-  const finalAgreedPrice = finalAgreedRound ? Number(finalAgreedRound.vendor_ask || finalAgreedRound.buyer_offer || 0) : 0
-  const finalMargin = finalAgreedRound
-    ? Number(finalAgreedRound.buyer_margin_pct || projectedDealMarginPct || 0)
-    : Number(projectedDealMarginPct || 0)
+  const finalAgreedRound = useMemo(() => rounds.find((r) => r.agreed), [rounds])
+  const lastRound = rounds[rounds.length - 1]
+  const lastRoundNum = lastRound ? Number(lastRound.round || 0) : 1
+  const bestOffer = useMemo(() => Math.min(...rounds.map((r) => Number(r.buyer_offer || 999))), [rounds])
+  const vendorsLast = lastRound ? Number(lastRound.vendor_ask || 0) : 0
+  const dealAgreed = !!finalAgreedRound
+  const finalMargin = finalAgreedRound ? Number(finalAgreedRound.buyer_margin_pct || projectedDealMarginPct || 0) : Number(projectedDealMarginPct || 0)
 
   return (
-    <div className="negotiation-chat-shell">
-      <div className="negotiation-chat-thread-wrap">
-        <GapClosingChart rounds={rounds} />
-
-        <div className="negotiation-chat-thread">
-          {messageRows.map((message) => {
-            const defaultExpanded = message.roundLabel === lastRoundLabel
-            const isExpanded = expandedReasoning[message.id] ?? defaultExpanded
-            const rationaleSentence = toFirstSentence(message.reasoning || message.impact)
-
-            return (
-              <motion.div
-                key={message.id}
-                className={`negotiation-chat-item ${message.side}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.22 }}
-              >
-                <div className={`negotiation-avatar ${message.side}`} aria-hidden>
-                  <span>{message.side === 'buyer' ? 'B' : 'V'}</span>
-                </div>
-                <div className="negotiation-message-col">
-                  <div className={`negotiation-message-label ${message.side}`}>
-                    <span>{message.agent}</span>
-                    <strong>{message.roundLabel}</strong>
-                  </div>
-                  <div className={`negotiation-bubble ${message.side}`}>
-                    <p className="negotiation-price-line">Offer: <strong>${message.price.toFixed(2)}</strong></p>
-                    <p className="negotiation-impact-line">{rationaleSentence}</p>
-                  <div className="negotiation-reasoning-box">
-                    <div className="negotiation-reasoning-head">
-                      <span>Reasoning</span>
-                      <button
-                        className="swarm-reasoning-toggle"
-                        onClick={() => setExpandedReasoning((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
-                      >
-                        {isExpanded ? 'Hide reasoning' : 'Show reasoning'}
-                      </button>
-                    </div>
-                    {isExpanded && <p>{message.reasoning}</p>}
-                  </div>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
+    <div className="nc-shell">
+      {/* Header */}
+      <div className="nc-header">
+        <div className="nc-header-left">
+          <span className="nc-logo">◎</span>
+          <div>
+            <span className="nc-title">AI Negotiation Agent</span>
+            <span className="nc-subtitle">Smart negotiation in progress</span>
+          </div>
+          <span className="nc-live-badge">● Live</span>
         </div>
+        <button className="nc-end-btn">↩ End Negotiation</button>
       </div>
 
-      <div className="negotiation-outcome-card">
-        <div>
-          <span className={`negotiation-outcome-pill ${finalAgreedRound ? 'ok' : 'warn'}`}>{finalAgreedRound ? 'Deal agreed' : 'BATNA required'}</span>
-          <h4>{finalAgreedRound ? `Final agreed price: $${finalAgreedPrice.toFixed(2)}` : 'No deal — activating BATNA'}</h4>
-          <p>
-            {finalAgreedRound
-              ? `Round ${finalAgreedRound.round} closed in-zone. Margin remains ${finalMargin.toFixed(1)}%.`
-              : `Primary negotiation did not converge under walk-away $${Number(walkAwayPrice || 0).toFixed(2)}. Escalate to alternate vendor path.`}
-          </p>
+      {/* 3-column body */}
+      <div className="nc-body">
+
+        {/* LEFT: Rounds */}
+        <div className="nc-rounds-col">
+          <p className="nc-col-title">Negotiation Rounds</p>
+          <div className="nc-rounds-list">
+            {rounds.map((r, i) => {
+              const isLast = i === rounds.length - 1
+              return (
+                <div key={r.round} className={`nc-round-card ${isLast ? 'active' : ''}`}>
+                  <div className="nc-round-card-top">
+                    <span className="nc-round-id">R{r.round}</span>
+                    {isLast ? <span className="nc-round-active-pill">Active</span> : <span className="nc-round-price">${Number(r.buyer_offer || 0).toFixed(2)}</span>}
+                  </div>
+                  <span className="nc-round-sub">{isLast ? 'Current Round' : 'Previous'}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="nc-best-offer-card">
+            <span className="nc-best-offer-label">Best Offer</span>
+            <strong className="nc-best-offer-val">${bestOffer === 999 ? '—' : bestOffer.toFixed(2)}</strong>
+            <span className="nc-best-offer-sub">Round {lastRoundNum}</span>
+          </div>
+          <div className="nc-progress-block">
+            <p className="nc-col-title">Negotiation Progress</p>
+            <div className="nc-progress-bar">
+              <div className="nc-progress-fill" style={{ width: `${Math.min(100, (rounds.length / 5) * 100)}%` }} />
+            </div>
+            <span className="nc-progress-label">{rounds.length} of 5 rounds</span>
+          </div>
         </div>
-        <div className="negotiation-outcome-gauge">
-          <MarginArcGauge marginPct={finalMargin} size={136} />
+
+        {/* CENTER: Chat */}
+        <div className="nc-chat-col">
+          <div className="nc-chat-header">
+            <span className="nc-chat-title">Current Conversation — Round {lastRoundNum}</span>
+            <span className="nc-chat-live">● Live</span>
+          </div>
+          <div className="nc-chat-messages">
+            {messageRows.map((message) => {
+              const isExpanded = expandedReasoning[message.id] ?? false
+              return (
+                <motion.div key={message.id} className={`nc-msg ${message.side}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+                  <div className={`nc-avatar ${message.side}`}>{message.side === 'buyer' ? 'B' : 'V'}</div>
+                  <div className="nc-msg-body">
+                    <div className="nc-msg-meta">
+                      <span className="nc-msg-agent">{message.agent}</span>
+                      <span className="nc-msg-time">Just now</span>
+                    </div>
+                    <div className={`nc-bubble ${message.side}`}>
+                      <div className="nc-offer-dot" />
+                      <p className="nc-offer-line">Offer: <strong>${message.price.toFixed(2)}</strong></p>
+                      <p className="nc-offer-sub">{message.impact}</p>
+                      <div className="nc-reasoning-row">
+                        <span className="nc-reasoning-label">REASONING</span>
+                        <button className="nc-show-reasoning" onClick={() => setExpandedReasoning((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}>
+                          {isExpanded ? 'Hide reasoning' : 'Show reasoning'}
+                        </button>
+                      </div>
+                      {isExpanded && <p className="nc-reasoning-text">{message.reasoning}</p>}
+                    </div>
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+          <div className="nc-chat-input-row">
+            <input className="nc-chat-input" placeholder="Type your message..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} />
+            <button className="nc-send-btn">◎ Send</button>
+          </div>
+          <p className="nc-tip">Tip: The AI agents will continue negotiating automatically</p>
         </div>
+
+        {/* RIGHT: Insights */}
+        <div className="nc-insights-col">
+          <p className="nc-col-title">Negotiation Insights</p>
+          <div className="nc-insight-metrics">
+            <div className="nc-insight-metric buyer">
+              <span className="nc-insight-icon">↗</span>
+              <strong>${bestOffer === 999 ? '—' : bestOffer.toFixed(2)}</strong>
+              <span>Best Offer</span>
+              <small>Round {lastRoundNum}</small>
+            </div>
+            <div className="nc-insight-metric vendor">
+              <span className="nc-insight-icon">$</span>
+              <strong>${vendorsLast.toFixed(2)}</strong>
+              <span>Vendor's Last</span>
+              <small>Round {lastRoundNum}</small>
+            </div>
+            <div className="nc-insight-metric target">
+              <span className="nc-insight-icon">◎</span>
+              <strong>${Number(walkAwayPrice || 0).toFixed(2)}</strong>
+              <span>Target Price</span>
+              <small>Your Target</small>
+            </div>
+          </div>
+
+          <div className="nc-status-block">
+            <p className="nc-col-title">Status</p>
+            <span className={`nc-status-pill ${dealAgreed ? 'ok' : 'batna'}`}>{dealAgreed ? 'DEAL AGREED' : 'BATNA REQUIRED'}</span>
+            <p className="nc-status-headline">{dealAgreed ? 'Deal Agreed' : 'NO DEAL — ACTIVATING BATNA'}</p>
+            <p className="nc-status-body">{dealAgreed ? `Round closed in-zone. Margin remains ${finalMargin.toFixed(1)}%.` : `Primary negotiation did not converge under walk-away $${Number(walkAwayPrice || 0).toFixed(2)}. Escalate to alternate vendor path.`}</p>
+          </div>
+
+          <div className="nc-recommendations">
+            <p className="nc-col-title">Recommendations</p>
+            {[
+              ['Consider increasing offer slightly', 'Vendor appears firm on pricing'],
+              ['Explore value-added terms', 'Payment terms, delivery, or warranty'],
+              ['Set your BATNA threshold', 'Define your walk-away point'],
+            ].map(([title, sub]) => (
+              <div key={title} className="nc-rec-item">
+                <span className="nc-rec-check">✓</span>
+                <div><p className="nc-rec-title">{title}</p><p className="nc-rec-sub">{sub}</p></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="nc-quick-actions">
+            <p className="nc-col-title">Quick Actions</p>
+            {[['◎', 'Adjust Strategy', 'Modify negotiation approach'], ['↻', 'View History', 'See all negotiation rounds']].map(([icon, title, sub]) => (
+              <div key={title} className="nc-action-item">
+                <span className="nc-action-icon">{icon}</span>
+                <div><p className="nc-action-title">{title}</p><p className="nc-action-sub">{sub}</p></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   )
@@ -904,6 +972,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
   const [vendorCounterOffer, setVendorCounterOffer] = useState('')
   const [impactTrigger, setImpactTrigger] = useState(null)
   const [impactTriggerType, setImpactTriggerType] = useState(defaultTriggerTypeByEvent[initialEventId] || 'tariff')
+  const [eventCategoryFilter, setEventCategoryFilter] = useState('all')
   const [impactTariffProfile, setImpactTariffProfile] = useState({ cn: 145, mx: 0, kr: 18, jp: 14, in: 10, other: 25 })
   const [selectedImpactComponentId, setSelectedImpactComponentId] = useState('')
   const [simulationTargetMarginPct, setSimulationTargetMarginPct] = useState(22)
@@ -3059,12 +3128,12 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
         </div>
       </motion.header>
 
-      <section className="panel" style={{ marginTop: 6, marginBottom: 0 }}>
-        <div className="panel-head" style={{ marginBottom: 8 }}>
+      <section className="panel profit-equation-panel" style={{ marginTop: 6, marginBottom: 0 }}>
+        <div className="panel-head" style={{ marginBottom: 10 }}>
           <h2>Profit Equation</h2>
           <p>Revenue − Purchase Cost − Logistics Cost = Profit</p>
         </div>
-        <div className="decision-grid">
+        <div className="decision-grid profit-equation-grid">
           <div><span>Revenue</span><strong>${Math.round(lockedRevenue).toLocaleString()}</strong></div>
           <div><span>Purchase Cost</span><strong>${Math.round(counterOfferAdjustedPurchaseCost).toLocaleString()}</strong></div>
           <div><span>Logistics + Tariff</span><strong>${Math.round(logisticsCostBase).toLocaleString()}</strong></div>
@@ -3125,30 +3194,40 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             </div>
           ) : (
             <>
-              <div className="metrics-strip">
+              <div className="metrics-strip bom-metrics-strip">
                 <div><span>Baseline Procurement Spend</span><strong>${Number(decisionContextData.baseline_procurement_spend || 0).toLocaleString()}</strong></div>
                 <div><span>Disruption-Sensitive Spend</span><strong>${Number(decisionContextData.disruption_sensitive_spend || 0).toLocaleString()}</strong></div>
                 <div><span>Unit Revenue</span><strong>${Number(decisionContextData.margin_constraints?.unit_revenue || 0).toLocaleString()}</strong></div>
                 <div><span>Floor Margin</span><strong>{Math.round(Number(decisionContextData.margin_constraints?.floor_margin_pct || 0) * 100)}%</strong></div>
               </div>
-              <p className="ops-context-note">{decisionContextData.headline}</p>
+              <p className="ops-context-note bom-headline">{decisionContextData.headline}</p>
               <div className="agent-chart-grid">
-                <div className="intel-card">
+                <div className="bom-intel-card">
                   <h3>Top Exposed Components</h3>
-                  <ul>
+                  <ul className="bom-signal-list">
                     {(decisionContextData.top_exposed_components || []).map((item) => (
-                      <li key={item.component_id}>
-                        <strong>{item.component_name}</strong> · ${Number(item.disruption_sensitive_spend || 0).toLocaleString()} sensitive spend · {item.margin_sensitivity_pct}% margin sensitivity
+                      <li key={item.component_id} className="bom-signal-row">
+                        <span className="bom-dot bom-dot--amber" />
+                        <span className="bom-signal-body">
+                          <strong>{item.component_name}</strong>
+                          <span className="bom-sep">|</span>
+                          <span>Sensitive spend <strong className="bom-val-green">${Number(item.disruption_sensitive_spend || 0).toLocaleString()}</strong> · {item.margin_sensitivity_pct}% margin</span>
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </div>
-                <div className="intel-card">
+                <div className="bom-intel-card">
                   <h3>Market Evidence</h3>
-                  <ul>
+                  <ul className="bom-signal-list">
                     {topMarketEvidence.map((item, index) => (
-                      <li key={`${item.label}-${index}`}>
-                        <strong>{item.label}</strong> · {item.value}{item.unit ? ` ${item.unit}` : ''} · confidence {item.confidence}% · fresh {item.freshness_hours}h
+                      <li key={`${item.label}-${index}`} className="bom-signal-row">
+                        <span className={`bom-dot ${Number(item.confidence || 0) >= 80 ? 'bom-dot--green' : 'bom-dot--amber'}`} />
+                        <span className="bom-signal-body">
+                          <strong>{item.label}</strong>
+                          <span className="bom-sep">|</span>
+                          <span>{item.value}{item.unit ? ` ${item.unit}` : ''} · conf {item.confidence}% · fresh <span className="bom-val-amber">{item.freshness_hours}h</span></span>
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -3184,26 +3263,22 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       </strong>
                     </div>
                   </div>
-                  <ResearchNarrativeCard
-                    insight={module1ResearchInsight}
-                    fallbackNarrative={module1FallbackNarrative}
-                    keySignals={module1ResearchSignals}
-                    onRerun={() => setResearchRerunTick((prev) => prev + 1)}
-                    isRefreshing={researchRerunLoading}
-                  />
-                  <EligibilityMap
-                    vendors={activeResearchCompliance}
-                    narrative={module1ResearchInsight?.summary || 'AI compliance narrative: highlighted vendors satisfy active sanctions/trade filters while blocked vendors violate current legal constraints.'}
-                  />
-                  <div className="intel-card" style={{ marginTop: 10 }}>
-                    <h3>Market Trend Evidence</h3>
-                    <ul>
-                      {activeResearchEvidence.map((item, index) => (
-                        <li key={`${activeResearchComponentId}-evidence-${index}`}>
-                          <strong>{item.label}</strong> · {item.value}{item.unit ? ` ${item.unit}` : ''} · confidence {item.confidence}%
-                        </li>
-                      ))}
-                    </ul>
+                  <div className="bom-research-row">
+                    <div className="bom-research-narrative">
+                      <ResearchNarrativeCard
+                        insight={module1ResearchInsight}
+                        fallbackNarrative={module1FallbackNarrative}
+                        keySignals={module1ResearchSignals}
+                        onRerun={() => setResearchRerunTick((prev) => prev + 1)}
+                        isRefreshing={researchRerunLoading}
+                      />
+                    </div>
+                    <div className="bom-research-map">
+                      <EligibilityMap
+                        vendors={activeResearchCompliance}
+                        narrative={module1ResearchInsight?.summary || 'AI compliance narrative: highlighted vendors satisfy active sanctions/trade filters while blocked vendors violate current legal constraints.'}
+                      />
+                    </div>
                   </div>
                 </>
               )}
@@ -3214,42 +3289,57 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
       {showSections.ordersIntake && (
         <motion.section className="panel order-intake-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.1 }}>
-          <div className="panel-head">
-            <h2>Layer 1: Customer Order Intake + BOM Explosion</h2>
-            <p>What just came in, and what does it need? Intake, BOM explosion, category expansion, criticality, and inventory countdown.</p>
+          <div className="panel-head layer1-panel-head">
+            <div className="layer1-title-wrap">
+              <div className="layer1-icon">📦</div>
+              <div>
+                <h2>Layer 1: Customer Order Intake + BOM Explosion</h2>
+                <p>What just came in, and what does it need? Intake, BOM explosion, category expansion, criticality, and inventory countdown.</p>
+              </div>
+            </div>
+            <span className="layer1-live-badge">● Auto-Intake Live</span>
           </div>
-          <div className="order-auto-status order-auto-controls">
-            <label>Product SKU
-              <select className="ghost-select" value={orderDraft.skuId} onChange={(e) => setOrderDraft((prev) => ({ ...prev, skuId: e.target.value }))}>
-                <option value="xps-15-i9-rtx4080">XPS 15 i9 RTX 4080</option>
-                <option value="latitude-14-u7">Latitude 14 Ultra 7</option>
-              </select>
-            </label>
-            <label>Quantity
-              <input className="ghost-input" type="number" min="1" value={orderDraft.quantity} onChange={(e) => setOrderDraft((prev) => ({ ...prev, quantity: Number(e.target.value) }))} />
-            </label>
-            <label>Region
-              <input className="ghost-input" value={orderDraft.region} onChange={(e) => setOrderDraft((prev) => ({ ...prev, region: e.target.value }))} />
-            </label>
-            <label>Priority
-              <select className="ghost-select" value={orderDraft.customerPriority} onChange={(e) => setOrderDraft((prev) => ({ ...prev, customerPriority: e.target.value }))}>
-                <option value="standard">Standard</option>
-                <option value="high">High</option>
-                <option value="expedite">Expedite</option>
-              </select>
-            </label>
-            <div><span>Scope Source</span><strong>Automatic Intake</strong></div>
-            <button className="flow-btn" onClick={() => { orderIngestKeyRef.current = ''; ingestOrder() }} disabled={orderLoading}>{orderLoading ? 'Refreshing...' : 'Refresh BOM'}</button>
+
+          <div className="order-config-section">
+            <span className="order-config-label">Order Configuration</span>
+            <div className="order-auto-status order-auto-controls">
+              <label>Product SKU
+                <select className="ghost-select" value={orderDraft.skuId} onChange={(e) => setOrderDraft((prev) => ({ ...prev, skuId: e.target.value }))}>
+                  <option value="xps-15-i9-rtx4080">XPS 15 i9 RTX 4080</option>
+                  <option value="latitude-14-u7">Latitude 14 Ultra 7</option>
+                </select>
+              </label>
+              <label>Quantity
+                <input className="ghost-input" type="number" min="1" value={orderDraft.quantity} onChange={(e) => setOrderDraft((prev) => ({ ...prev, quantity: Number(e.target.value) }))} />
+              </label>
+              <label>Region
+                <input className="ghost-input" value={orderDraft.region} onChange={(e) => setOrderDraft((prev) => ({ ...prev, region: e.target.value }))} />
+              </label>
+              <label>Priority
+                <select className="ghost-select" value={orderDraft.customerPriority} onChange={(e) => setOrderDraft((prev) => ({ ...prev, customerPriority: e.target.value }))}>
+                  <option value="standard">Standard</option>
+                  <option value="high">High</option>
+                  <option value="expedite">Expedite</option>
+                </select>
+              </label>
+              <div><span>Scope Source</span><strong>Automatic Intake</strong></div>
+              <button className="flow-btn" onClick={() => { orderIngestKeyRef.current = ''; ingestOrder() }} disabled={orderLoading}>{orderLoading ? 'Refreshing...' : 'Refresh BOM'}</button>
+            </div>
           </div>
           {orderError && <p className="flow-error">{orderError}</p>}
 
           {executiveSnapshot && (
             <div className={`executive-strip ${executiveSnapshot.status === 'red' ? 'critical' : 'stable'}`}>
-              <div><span>Decision</span><strong>{executiveSnapshot.decision}</strong></div>
-              <div><span>Critical at Risk</span><strong>{executiveSnapshot.critical_components_at_risk}</strong></div>
-              <div><span>Intervention Deadline</span><strong>{executiveSnapshot.closest_intervention_deadline_days}d</strong></div>
-              <div><span>Orders Impacted</span><strong>{executiveSnapshot.orders_impacted_percent}%</strong></div>
-              <div><span>Revenue at Risk</span><strong>${Number(executiveSnapshot.estimated_revenue_at_risk || 0).toLocaleString()}</strong></div>
+              {executiveSnapshot.status === 'red' && (
+                <div className="executive-alert-header">⚠ Critical Alert — Immediate Action Required</div>
+              )}
+              <div className="executive-strip-cols">
+                <div><span>Decision</span><strong>{executiveSnapshot.decision}</strong></div>
+                <div><span>Critical at Risk</span><strong>{executiveSnapshot.critical_components_at_risk}</strong></div>
+                <div><span>Intervention Deadline</span><strong>{executiveSnapshot.closest_intervention_deadline_days}d</strong></div>
+                <div><span>Orders Impacted</span><strong>{executiveSnapshot.orders_impacted_percent}%</strong></div>
+                <div><span>Revenue at Risk</span><strong>${Number(executiveSnapshot.estimated_revenue_at_risk || 0).toLocaleString()}</strong></div>
+              </div>
             </div>
           )}
 
@@ -3274,16 +3364,29 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
               </div>
 
               <div className="bom-buckets">
-                {['critical', 'important', 'substitutable'].map((bucket) => (
-                  <div key={bucket} className="bom-bucket-card">
-                    <h4>{bucket.toUpperCase()}</h4>
-                    <ul>
-                      {(orderContext.bom.criticality_buckets[bucket] || []).slice(0, 5).map((component) => (
-                        <li key={`${bucket}-${component.component_id}`}>{component.component_name} · {component.days_to_stockout_disruption}d</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                {['critical', 'important', 'substitutable'].map((bucket) => {
+                  const items = (orderContext.bom.criticality_buckets[bucket] || []).slice(0, 5);
+                  const icons = { critical: '△', important: '↑', substitutable: '✓' };
+                  return (
+                    <div key={bucket} className={`bom-bucket-card bom-bucket-card--${bucket}`}>
+                      <div className="bom-bucket-header">
+                        <span className="bom-bucket-title">
+                          <span className="bom-bucket-icon">{icons[bucket]}</span>
+                          {bucket.toUpperCase()}
+                        </span>
+                        <span className="bom-bucket-count">{items.length}</span>
+                      </div>
+                      <ul>
+                        {items.map((component) => (
+                          <li key={`${bucket}-${component.component_id}`} className="bom-bucket-row">
+                            <span className="bom-bucket-name">{component.component_name}</span>
+                            <span className="bom-bucket-days">{component.days_to_stockout_disruption}d</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="bom-tree-wrap">
@@ -3341,40 +3444,88 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
       {view === 'disruption-impact' && (
         <motion.section className="panel" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42 }}>
-          <div className="panel-head">
-            <h2>Page 2: Disruption + Impact</h2>
-            <p>What changed, and how does it alter our economics?</p>
+          <div className="panel-head layer1-panel-head">
+            <div className="layer1-title-wrap">
+              <div className="layer1-icon dis-icon">⚡</div>
+              <div>
+                <h2>Layer 2: Event Trigger + Disruption Impact</h2>
+                <p>Select a global disruption event and the affected component. The AI swarm maps causal propagation, vendor exposure, and real-time cost impact.</p>
+              </div>
+            </div>
+            <span className={`dis-status-badge ${isImpactTriggered ? 'dis-status--triggered' : ''}`}>
+              ● {isImpactTriggered ? 'Triggered' : 'Awaiting Trigger'}
+            </span>
+          </div>
+
+          <div className="dis-section-head">
+            <span className="order-config-label" style={{ margin: 0 }}>Select Disruption Event</span>
+            <div className="dis-filter-row">
+              {['all', 'commodity', 'tariff', 'vessel', 'port'].map((f) => (
+                <button key={f} className={`dis-filter-btn ${eventCategoryFilter === f ? 'active' : ''}`} onClick={() => setEventCategoryFilter(f)}>
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="event-grid">
-            {(state?.events || []).map((event) => (
-              <motion.button key={event.id} className={`event-card ${selectedEventId === event.id ? 'selected' : ''}`} onClick={() => resetEvent(event.id)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
-                <span className="event-icon">{event.icon}</span>
-                <span className="event-name">{event.name}</span>
-                <span className="agent-meta">{disruptionTriggerOptions.find((opt) => opt.value === (defaultTriggerTypeByEvent[event.id] || 'tariff'))?.label || 'Event Trigger'}</span>
-              </motion.button>
-            ))}
+            {(state?.events || [])
+              .filter((e) => eventCategoryFilter === 'all' || eventMeta[e.id]?.category === eventCategoryFilter)
+              .map((event) => {
+                const meta = eventMeta[event.id] || {}
+                return (
+                  <motion.button key={event.id} className={`event-card ${selectedEventId === event.id ? 'selected' : ''}`} onClick={() => resetEvent(event.id)} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+                    <div className="event-card-top">
+                      <span className="event-icon-box">{event.icon}</span>
+                      <span className={`event-cat-badge event-cat--${meta.category}`}>{meta.category?.toUpperCase()}</span>
+                    </div>
+                    <span className="event-name">{event.name}</span>
+                    <div className="event-card-footer">
+                      <span className="event-region">{meta.region} · {meta.type}</span>
+                      <span className={`severity ${meta.severity}`}>● {(meta.severity || '').toUpperCase()}</span>
+                    </div>
+                  </motion.button>
+                )
+              })}
           </div>
-          <div className="component-selector" style={{ marginTop: 10 }}>
+
+          <span className="order-config-label" style={{ marginTop: 14, display: 'block' }}>Affected Component + Configuration</span>
+          <div className="component-selector">
             {missionAnalyticalComponents.map((component) => (
-              <button key={component.id} className={`comp-chip ${selectedComponentId === component.id ? 'selected' : ''}`} onClick={() => setSelectedComponentId(component.id)}>
+              <button key={component.id} className={`comp-chip ${selectedComponentId === component.id ? `selected selected--${component.criticality}` : ''}`} onClick={() => setSelectedComponentId(component.id)}>
                 <span className={`crit-dot ${component.criticality}`} />
-                {component.name}{component.runway ? ` · ${component.runway}d` : ''}
+                {component.name}{component.runway ? ` ${component.runway}d` : ''}
               </button>
             ))}
           </div>
 
-          <div className="order-auto-status order-auto-controls" style={{ marginTop: 10 }}>
-            <label>Trigger Type
-              <select className="ghost-select" value={impactTriggerType} onChange={(e) => setImpactTriggerType(e.target.value)}>
-                {disruptionTriggerOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <div><span>Primary Mode</span><strong>{impactTriggerType === 'tariff' ? 'US Tariff Schedule' : 'Operational Shock'}</strong></div>
-            <div><span>Selected Event</span><strong>{selectedEvent?.name || selectedEventId}</strong></div>
+          <div className="dis-config-cards">
+            <div className="dis-config-card">
+              <span className="dis-config-card-label"><span className="dis-dot dis-dot--amber" />Trigger Type</span>
+              <strong className="dis-config-card-title dis-config-card-title--amber">{disruptionTriggerOptions.find((o) => o.value === impactTriggerType)?.label || 'Commodity Price Spike'}</strong>
+              <span className="dis-config-card-sub">Auto-detected from event</span>
+            </div>
+            <div className="dis-config-card">
+              <span className="dis-config-card-label"><span className="dis-dot dis-dot--cyan" />Primary Mode</span>
+              <strong className="dis-config-card-title">{impactTriggerType === 'tariff' ? 'US Tariff Schedule' : 'Operational Shock'}</strong>
+              <span className="dis-config-card-sub">Swarm deployment mode</span>
+            </div>
+            <div className="dis-config-card">
+              <span className="dis-config-card-label"><span className="dis-dot dis-dot--cyan" />Selected Event</span>
+              <strong className="dis-config-card-title">{selectedEvent?.name || '—'}</strong>
+              <span className="dis-config-card-sub">{eventMeta[selectedEventId]?.region} · {eventMeta[selectedEventId]?.type} · {(eventMeta[selectedEventId]?.severity || '').toUpperCase()}</span>
+            </div>
           </div>
+
+          {(() => { const ac = missionAnalyticalComponents.find((c) => c.id === selectedComponentId); return ac ? (
+            <div className="dis-summary-strip">
+              <div><span>Component</span><strong className="dis-val--rose">{ac.name}</strong></div>
+              <div><span>Lead Time</span><strong className="dis-val--amber">{ac.runway ? `${ac.runway}d` : '—'}</strong></div>
+              <div><span>Risk Exposure</span><strong className={`dis-val--${ac.criticality === 'critical' ? 'rose' : ac.criticality === 'important' ? 'amber' : 'mint'}`}>{(ac.criticality || 'critical').toUpperCase()}</strong></div>
+              <div><span>Swarm Agents</span><strong className="dis-val--mint">10 ready</strong></div>
+              <div><span>Mode</span><strong className="dis-val--cyan">External</strong></div>
+            </div>
+          ) : null; })()}
           {impactTriggerType === 'tariff' && (
             <div className="decision-grid" style={{ marginTop: 8 }}>
               <label>China (%)
@@ -3398,9 +3549,9 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             </div>
           )}
 
-          <div className="flow-page-actions" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
-            <button className="flow-btn primary" onClick={triggerDisruptionImpact} disabled={!activeOrderId || !activeDecisionComponentId}>
-              Trigger Event + Deploy AI Swarm
+          <div style={{ marginTop: 14 }}>
+            <button className="dis-trigger-btn" onClick={triggerDisruptionImpact} disabled={!activeOrderId || !activeDecisionComponentId}>
+              ⚡ Trigger Event + Deploy AI Swarm
             </button>
             {isImpactTriggered && (
               <span className="agent-meta" style={{ alignSelf: 'center' }}>
@@ -3850,7 +4001,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 confidenceDiagnostics={simulationConfidenceDiagnostics}
               />
 
-              <div className="order-auto-status order-auto-controls" style={{ marginTop: 8 }}>
+              <div className="order-auto-status order-auto-controls" style={{ marginTop: 8, gridTemplateColumns: 'repeat(4, 1fr)' }}>
                 <label>Locked Revenue per Unit ($)
                   <input className="ghost-input" type="number" min="1" step="0.01" value={simulationLockedRevenueUnit} onChange={(e) => setSimulationLockedRevenueUnit(Number(e.target.value || 0))} />
                 </label>
@@ -4321,38 +4472,130 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 </label>
               </div>
 
-              <div className="recommendation-route-panel">
-                <div className="recommendation-route-panel-head">
-                  <h3>Route Decision Map</h3>
-                  <p>Recommended lane is animated; blocked alternatives are marked in red with X indicators.</p>
-                </div>
-                <RecommendationRouteMap recommendedRoute={recommendedRouteLabel} blockedRoutes={blockedRouteLabels} />
-              </div>
+              {/* ── Route Optimizer Panel ─────────────────────── */}
+              <div className="route-optimizer-panel">
 
-              <div className="recommendation-vendor-cards">
-                {topRecommendationCards.map((option, index) => (
-                  <button
-                    key={option.id}
-                    className={`recommendation-vendor-card${option.id === recommendedCardId ? ' recommended' : ''}${activeRecommendation?.id === option.id ? ' active' : ''}`}
-                    onClick={() => setActiveRecommendationId(option.id)}
-                  >
-                    <div className="recommendation-vendor-card-head">
-                      <div>
-                        <span className="recommendation-rank-pill">#{index + 1} {option.id === recommendedCardId ? 'Recommended' : 'Candidate'}</span>
-                        <h4>{option.vendorName} <small>({option.vendorCountry})</small></h4>
-                      </div>
-                      <div className="recommendation-margin-gauge-wrap">
-                        <MarginArcGauge marginPct={option.projectedMarginPct} size={option.id === recommendedCardId ? 92 : 74} range={45} />
-                      </div>
+                {/* Header */}
+                <div className="route-optimizer-header">
+                  <div className="route-optimizer-header-left">
+                    <span className="route-optimizer-icon">✈</span>
+                    <div>
+                      <span className="route-optimizer-title">Route Optimizer</span>
+                      <span className="route-optimizer-sub">Real-time route recommendations</span>
                     </div>
-                    <div className="recommendation-vendor-card-metrics">
-                      <span>Price <strong>${option.negotiatedOrTargetPrice.toFixed(2)}</strong></span>
-                      <span>Risk <strong>{option.riskScore.toFixed(1)}</strong></span>
-                      <span>Lead <strong>{option.leadTimeDays.toFixed(1)}d</strong></span>
+                  </div>
+                  <div className="route-optimizer-header-right">
+                    <span className="route-optimizer-updated">Updated just now <span style={{ color: '#39d353' }}>●</span></span>
+                    <button className="route-optimizer-prefs">⚙ Preferences</button>
+                  </div>
+                </div>
+
+                {/* Top metrics strip */}
+                <div className="route-optimizer-strip">
+                  <div className="route-opt-metric">
+                    <span>Best Route</span>
+                    <strong style={{ color: '#39d353' }}>{(topRecommendationCards[0]?.routeLabel || 'Querétaro → Dallas').replace('->', '→')}</strong>
+                    <small>via {topRecommendationCards[0]?.routeMode || 'AIR'}</small>
+                    <span className="route-opt-rec-badge">RECOMMENDED</span>
+                  </div>
+                  <div className="route-opt-metric">
+                    <span>Success Probability</span>
+                    <strong style={{ color: '#39d353' }}>{Math.max(60, (100 - (topRecommendationCards[0]?.riskScore || 0) * 0.38)).toFixed(1)}%</strong>
+                    <small>High confidence</small>
+                  </div>
+                  <div className="route-opt-metric">
+                    <span>Est. Transit Time</span>
+                    <strong style={{ color: '#00bfff' }}>{Math.floor((topRecommendationCards[0]?.leadTimeDays || 0) * 24)}h {Math.round(((topRecommendationCards[0]?.leadTimeDays || 0) * 24 % 1) * 60)}m</strong>
+                    <small>Non-stop</small>
+                  </div>
+                  <div className="route-opt-metric">
+                    <span>Est. Cost (Total)</span>
+                    <strong style={{ color: '#cc88ff' }}>${(topRecommendationCards[0]?.totalLandedCost || topRecommendationCards[0]?.negotiatedOrTargetPrice || 0).toFixed(2)}</strong>
+                    <small>All-in estimate</small>
+                  </div>
+                  <div className="route-opt-metric">
+                    <span>Total Risk Score</span>
+                    <strong style={{ color: '#ffb300' }}>{(topRecommendationCards[0]?.riskScore || 0).toFixed(1)}%</strong>
+                    <small>Medium</small>
+                  </div>
+                  <div className="route-opt-metric route-opt-metric--action">
+                    <span className="route-opt-scale-icon">⚖</span>
+                    <strong>Compare Routes</strong>
+                    <small>View all options</small>
+                  </div>
+                </div>
+
+                {/* Map + Cards body */}
+                <div className="route-optimizer-body">
+
+                  {/* Left: map */}
+                  <div className="route-optimizer-map-col">
+                    <div className="route-map-legend" style={{ display: 'flex', gap: 16, fontFamily: 'var(--font-sans)', fontSize: 10, color: 'var(--text-dim)' }}>
+                      <span><span style={{ color: '#39d353' }}>──</span> Recommended Route</span>
+                      <span><span style={{ color: '#ff4060' }}>──</span> Blocked Route</span>
+                      <span style={{ opacity: 0.6 }}>- - Considered Route</span>
                     </div>
-                    <RoutePathMiniMap origin={option.vendorCountry || 'Vendor'} mode={option.routeMode} destination="Factory" />
-                  </button>
-                ))}
+                    <RecommendationRouteMap recommendedRoute={recommendedRouteLabel} blockedRoutes={blockedRouteLabels} />
+                    <div className="route-map-footer">
+                      <div className="route-map-live-row">
+                        <span><span style={{ color: '#39d353' }}>●</span> Live data</span>
+                        <span>Risk visualization <span className="route-risk-toggle">●</span></span>
+                      </div>
+                      <p className="route-map-caption">Routes are optimized based on live data, risk, cost, and transit time.</p>
+                    </div>
+                  </div>
+
+                  {/* Right: stacked route cards */}
+                  <div className="route-optimizer-cards-col">
+                    {topRecommendationCards.map((option, index) => {
+                      const isRec = option.id === recommendedCardId
+                      const successPct = Math.max(60, (100 - option.riskScore * 0.38 * (1 + index * 0.3))).toFixed(1)
+                      const cardColors = ['rgba(57,211,83,0.35)', 'rgba(0,191,255,0.35)', 'rgba(159,122,234,0.35)']
+                      const gaugeColors = ['#39d353', '#00bfff', '#9f7aea']
+                      const estHours = Math.floor(option.leadTimeDays * 24)
+                      const estMins = Math.round((option.leadTimeDays * 24 % 1) * 60)
+                      const rankLabel = isRec ? 'RECOMMENDED' : 'CANDIDATE'
+                      const destination = (option.routeLabel || '').split('->')[1]?.trim() || 'Dallas'
+                      const origin = (option.routeLabel || '').split('->')[0]?.trim() || 'Querétaro'
+                      const descriptions = ['Highest success probability and lowest risk.', 'Good balance of cost and reliability.', 'Alternative with higher transit time.']
+                      return (
+                        <button
+                          key={option.id}
+                          className={`route-opt-card${isRec ? ' recommended' : ''}${activeRecommendation?.id === option.id ? ' active' : ''}`}
+                          style={{ borderColor: cardColors[index] }}
+                          onClick={() => setActiveRecommendationId(option.id)}
+                        >
+                          <div className="route-opt-card-head">
+                            <div>
+                              <span className="route-opt-rank-pill" style={{ borderColor: gaugeColors[index], color: gaugeColors[index] }}>#{index + 1} {rankLabel}</span>
+                              <p className="route-opt-card-name">{origin} → {destination} <small>({option.vendorCountry})</small></p>
+                              <p className="route-opt-card-via">via {option.vendorName} • {option.routeMode || 'AIR'}</p>
+                            </div>
+                            <div className="route-opt-gauge-wrap">
+                              <MarginArcGauge marginPct={parseFloat(successPct)} size={72} range={45} color={gaugeColors[index]} />
+                              <span className="route-opt-gauge-label" style={{ color: gaugeColors[index] }}>Success Probability</span>
+                            </div>
+                          </div>
+                          <div className="route-opt-card-metrics">
+                            <div><span>Price (Total)</span><strong>${option.negotiatedOrTargetPrice.toFixed(2)}</strong></div>
+                            <div><span>Risk Score</span><strong style={{ color: '#ffb300' }}>{option.riskScore.toFixed(1)}%</strong></div>
+                            <div><span>Lead Time</span><strong>{option.leadTimeDays.toFixed(1)}d</strong></div>
+                            <div><span>Est. Time</span><strong>{estHours}h {estMins}m</strong></div>
+                          </div>
+                          <div className="route-opt-card-footer">
+                            {isRec
+                              ? <span className="route-opt-why"><span style={{ color: '#39d353' }}>Why recommended?</span> {descriptions[index]}</span>
+                              : <span className="route-opt-why">{descriptions[index]}</span>
+                            }
+                            <span className="route-opt-arrow">›</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                    <button className="route-view-all-btn">⬇ View All Routes ⬇</button>
+                  </div>
+
+                </div>
               </div>
 
               <div className="reasoning-trail-wrap">
@@ -4460,27 +4703,31 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '1rem', marginTop: 12 }}>
-                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 12 }}>
+                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)', maxHeight: 320, overflow: 'hidden' }}>
                       <div className="panel-head" style={{ paddingBottom: 0 }}>
                         <h3>Recommendation Interaction Graph</h3>
                         <p>{interactionGraph.configured ? 'Neo4j-backed graph available for relationship traversal.' : 'Fallback in-memory graph active. Configure Neo4j env to promote live graph edges.'}</p>
                       </div>
-                      <KnowledgeGraph2
-                        graphNodes={recommendationGraphNodes}
-                        graphEdges={recommendationGraphEdges}
-                        selectedEdgeId={selectedEdgeId}
-                        activatedNodeIds={activatedNodeIds}
-                        onEdgeSelect={setSelectedEdgeId}
-                      />
+                      <div style={{ height: 230, overflow: 'hidden' }}>
+                        <KnowledgeGraph2
+                          graphNodes={recommendationGraphNodes}
+                          graphEdges={recommendationGraphEdges}
+                          selectedEdgeId={selectedEdgeId}
+                          activatedNodeIds={activatedNodeIds}
+                          onEdgeSelect={setSelectedEdgeId}
+                        />
+                      </div>
                     </div>
 
-                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
+                    <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)', maxHeight: 320, overflow: 'hidden' }}>
                       <div className="panel-head" style={{ paddingBottom: 0 }}>
                         <h3>Route Mode Mix + Decision Notes</h3>
                         <p>Distribution of selected transport modes across ranked options.</p>
                       </div>
-                      <RecommendationModeMixChart options={sortedRecommendationOptions} />
+                      <div style={{ height: 180, overflow: 'hidden' }}>
+                        <RecommendationModeMixChart options={sortedRecommendationOptions} />
+                      </div>
                       <div className="ops-context-note" style={{ marginTop: 8 }}>
                         Best current option: <strong>{activeRecommendation.vendorName}</strong> via <strong>{activeRecommendation.routeLabel}</strong>, targeting <strong>${activeRecommendation.negotiatedOrTargetPrice.toFixed(2)}</strong> at <strong>{activeRecommendation.projectedMarginPct.toFixed(2)}%</strong> projected margin.
                       </div>
@@ -4709,39 +4956,23 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
             </div>
           ) : (
             <>
-              {/* ── Compact summary strip ────────────────────────────────── */}
-              <div className="metrics-strip negotiation-summary-strip" style={{ marginBottom: '1rem' }}>
-                <div>
-                  <span>Opening Offer</span>
-                  <strong style={{ color: '#00bfff' }}>${Number(activeNegVendor?.opening_offer || negoBriefs?.[0]?.opening_offer || 0).toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Negotiation Ceiling</span>
-                  <strong style={{ color: '#39d353' }}>${Number(activeNegVendor?.deal_zone_high || negotiationBand?.target_high_price || 0).toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Vendor Floor</span>
-                  <strong style={{ color: '#ff5050' }}>${Number(activeNegVendor?.estimated_vendor_floor || negoBriefs?.[0]?.estimated_vendor_floor || 0).toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Walk-Away</span>
-                  <strong style={{ color: '#ffb300' }}>${Number(activeNegVendor?.walk_away_price || negotiationBand?.walk_away_price || 0).toFixed(2)}</strong>
-                </div>
-              </div>
-
               {/* ── Vendor tabs ───────────────────────────────────────────── */}
-              <div className="route-chip-row" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
-                {negoBriefs.map((b) => (
-                  <button
-                    key={b.vendor_id}
-                    className={`ghost-btn${activeNegVendor?.vendor_id === b.vendor_id ? ' active' : ''}`}
-                    onClick={() => setActiveNegVendorId(b.vendor_id)}
-                    style={{ borderColor: b.deal_feasible ? '#39d353' : '#ff5050', color: b.deal_feasible ? '#39d353' : '#aaa' }}
-                  >
-                    {b.vendor_name}
-                    <span style={{ marginLeft: 5, fontSize: 9, opacity: 0.75 }}>{b.deal_feasible ? '✓ Feasible' : '✗ Tight'}</span>
-                  </button>
-                ))}
+              <div className="nego-vendor-tabs">
+                <div className="nego-vendor-tab-list">
+                  {negoBriefs.map((b) => (
+                    <button
+                      key={b.vendor_id}
+                      className={`nego-vendor-tab${activeNegVendor?.vendor_id === b.vendor_id ? ' active' : ''}`}
+                      onClick={() => setActiveNegVendorId(b.vendor_id)}
+                    >
+                      <span className="nego-vendor-tab-name">{b.vendor_name}</span>
+                      <span className="nego-vendor-tab-status" style={{ color: b.deal_feasible ? '#39d353' : '#ff5050' }}>
+                        {b.deal_feasible ? '✓ Feasible' : '✗ Tight'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button className="nego-export-btn">↓ Export Report</button>
               </div>
 
               {activeNegVendor && (
@@ -4751,7 +4982,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
 
                     {/* LEFT: Vendor brief card */}
                     <div className="panel" style={{ padding: '1rem', background: 'rgba(0,191,255,0.04)', border: '1px solid rgba(0,191,255,0.12)' }}>
-                      <h3 style={{ color: '#00bfff', marginBottom: '0.75rem', fontSize: '0.85rem' }}>{activeNegVendor.vendor_name} — Brief</h3>
+                      <p className="nego-panel-label" style={{ marginBottom: '0.75rem' }}>{activeNegVendor.vendor_name} — Brief</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.75rem' }}>
                         {[
                           ['Vendor Floor', `$${(activeNegVendor.estimated_vendor_floor || 0).toFixed(2)}`, '#ff5050'],
@@ -4784,7 +5015,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     {/* CENTER: Deal zone + counter-offer */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <div className="panel negotiation-deal-zone-panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
-                        <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.4rem' }}>Deal Zone Visual</p>
+                        <p className="nego-panel-label">Deal Zone Visual <span className="nego-info-icon">ⓘ</span></p>
                         <DealZoneChart
                           brief={activeNegVendor}
                           currentPrice={Number(activePlaybackRound?.buyer_offer || activeNegVendor.opening_offer || 0)}
@@ -4793,7 +5024,7 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       </div>
                       <div className="panel" style={{ padding: '0.75rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.1)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-                          <p style={{ color: '#7aaccc', fontSize: '0.7rem', flex: 1 }}>Profit Impact vs Price</p>
+                          <p className="nego-panel-label" style={{ flex: 1 }}>Profit Impact vs Price <span className="nego-info-icon">ⓘ</span></p>
                           <input
                             type="number"
                             className="ghost-input"
@@ -4829,15 +5060,15 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                       value={whatIfAcceptInput}
                       onChange={(e) => setWhatIfAcceptInput(e.target.value)}
                     />
-                    <span className="what-if-accept-suffix">?</span>
+                    <span className="nego-info-icon">ⓘ</span>
                     <span className={`what-if-accept-margin ${whatIfAcceptCalc ? (whatIfAcceptCalc.isAboveFloor ? 'ok' : 'risk') : 'idle'}`}>
                       Margin: {whatIfAcceptCalc ? `${whatIfAcceptCalc.marginPct.toFixed(2)}%` : '—'}
                     </span>
                     <span className="what-if-accept-floor">Floor: {whatIfAcceptCalc ? `${whatIfAcceptCalc.floorMarginPct.toFixed(2)}%` : `${Number(simulationTargetMarginPct || 22).toFixed(2)}%`}</span>
+                    <button className="nego-recalculate-btn" style={{ marginLeft: 'auto' }} onClick={() => setWhatIfAcceptInput(whatIfAcceptInput)}>↻ Recalculate</button>
                   </div>
 
-                  <div className="panel negotiation-conversation-main" style={{ padding: '0.85rem 1rem', background: 'rgba(0,191,255,0.03)', border: '1px solid rgba(0,191,255,0.12)', marginBottom: '1.25rem' }}>
-                    <p style={{ color: '#7aaccc', fontSize: '0.7rem', marginBottom: '0.5rem' }}>AI Negotiation Agent — Conversation Thread</p>
+                  <div className="negotiation-conversation-main" style={{ marginBottom: '1.25rem' }}>
                     <NegotiationChatThread
                       rounds={activeNegVendor.agent_rounds || []}
                       vendorName={activeNegVendor.vendor_name}
@@ -4994,7 +5225,29 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                 <div><span>Decisions Logged</span><strong>{learningHistory.length}</strong></div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '1rem' }}>
+              <div className="panel" style={{ marginBottom: 12, padding: '0.9rem 1rem', border: '1px solid rgba(0,191,255,0.2)', background: 'rgba(0,191,255,0.03)' }}>
+                <div className="panel-head" style={{ paddingBottom: 0 }}>
+                  <h3>Auto-generated Executive Brief</h3>
+                  <p>One-click executive PDF: AI summarizes the event, action, margin protected, and learning for EVP review.</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span className="research-live-pill">LIVE LLM</span>
+                  <button className="flow-btn primary" onClick={generateExecutiveBrief} disabled={executiveBriefLoading}>
+                    {executiveBriefLoading ? 'Generating executive PDF...' : 'Generate Executive PDF'}
+                  </button>
+                  {executiveBriefMeta && (
+                    <span className="ai-rationale-meta">{String(executiveBriefMeta.source || 'llm').toUpperCase()} · {String(executiveBriefMeta.model || 'copilot')}</span>
+                  )}
+                </div>
+                {executiveBriefError ? <p className="ops-context-note" style={{ marginTop: 8, color: '#ffbe68' }}>{executiveBriefError}</p> : null}
+                {executiveBriefPreview ? (
+                  <div className="ai-rationale-card" style={{ marginTop: 8 }}>
+                    <p className="ai-rationale-body">{executiveBriefPreview}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div className="panel" style={{ padding: '0.8rem 1rem', border: '1px solid rgba(0,191,255,0.14)', background: 'rgba(0,191,255,0.03)' }}>
                   <div className="panel-head" style={{ paddingBottom: 0 }}>
                     <h3>Projected vs Actual Outcomes</h3>
@@ -5024,28 +5277,6 @@ export default function App({ view = 'bom-intelligence', initialEventId, initial
                     Learning visibility: {Math.round(module6LearningProgress * 100)}% of close-out timeline.
                   </div>
                 </div>
-              </div>
-
-              <div className="panel" style={{ marginTop: 12, padding: '0.9rem 1rem', border: '1px solid rgba(0,191,255,0.2)', background: 'rgba(0,191,255,0.03)' }}>
-                <div className="panel-head" style={{ paddingBottom: 0 }}>
-                  <h3>Auto-generated Executive Brief</h3>
-                  <p>One-click executive PDF: AI summarizes the event, action, margin protected, and learning for EVP review.</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-                  <span className="research-live-pill">LIVE LLM</span>
-                  <button className="flow-btn primary" onClick={generateExecutiveBrief} disabled={executiveBriefLoading}>
-                    {executiveBriefLoading ? 'Generating executive PDF...' : 'Generate Executive PDF'}
-                  </button>
-                  {executiveBriefMeta && (
-                    <span className="ai-rationale-meta">{String(executiveBriefMeta.source || 'llm').toUpperCase()} · {String(executiveBriefMeta.model || 'copilot')}</span>
-                  )}
-                </div>
-                {executiveBriefError ? <p className="ops-context-note" style={{ marginTop: 8, color: '#ffbe68' }}>{executiveBriefError}</p> : null}
-                {executiveBriefPreview ? (
-                  <div className="ai-rationale-card" style={{ marginTop: 8 }}>
-                    <p className="ai-rationale-body">{executiveBriefPreview}</p>
-                  </div>
-                ) : null}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: 12 }}>
